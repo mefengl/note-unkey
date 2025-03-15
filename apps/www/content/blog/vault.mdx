@@ -7,34 +7,39 @@ author: andreas
 tags: ["launchweek", "marketing"]
 ---
 
+# Vault - 密钥恢复服务 
+
 *The most requested feature for Unkey has finally arrived.*
 
-Until now we only stored a one way hash of the key, enough to verify it, but nobody was able to show the original key again. Recovering the key, meaning showing the key after it was created, was not possible.
+// 技术背景说明
+在此之前，我们只存储密钥的单向哈希值，这足以验证密钥，但任何人都无法再次查看原始密钥。恢复密钥（即在创建密钥后显示密钥）是不可能的。
 
+// 安全性考量
+有充分的理由不让密钥可恢复，主要原因是安全性。如果攻击者获得数据库访问权限，他们只能看到哈希值，而不是密钥本身。但是让密钥可恢复也有合理的理由：
+- API 操场/文档使用真实密钥进行演示
+- 为用户提供更好的开发体验，避免创建新密钥并在所有地方更新的麻烦
 
-There are good reasons against making keys recoverable, the leading one being security. If an attacker gains access to database, they can see the hashes, but not the keys. But there are also good reasons for making keys recoverable:
+## Introducing Vault 密钥库简介
 
-- API playgrounds/documentation that use real keys for demo purposes
-- Better DX for your users, it's annoying to create a new key and update it everywhere
+// 安全实现说明
+我们对允许密钥恢复持谨慎态度，但我们找到了一种安全的实现方式。结合我们的权限系统来限制密钥的功能，我们很高兴为所有人推出这项功能。
 
-## Introducing Vault
+Vault 是我们的安全加密和解密服务。我们稍后会做一个工程深度解析，但现在让我们专注于如何使用它。
 
-We were hesitant to allow key recovery, but we've found a way to do it securely, and in combination with our permissioning system to limit the capabilities of keys, we're happy to roll it out for everyone.
+## Recovering keys 密钥恢复
 
-Vault is our secure service for encrypting and decrypting secrets. We'll do an engineering deep dive on it soon, but for now, let's focus on how you can use it.
+// API 使用说明
+如果为您的 API 启用了加密，您现在可以按以下方式恢复密钥：
 
-## Recovering keys
-If encryption is enabled for your API, you can now recover keys like so:
+getKey 和 listKeys 端点都接受 `decrypt` 查询参数。如果将其设置为 `true`，密钥将被解密并在响应中作为 `plaintext` 返回。
 
-Both the [getKey](/docs/api-reference/keys/get) and [listKeys](/docs/api-reference/apis/list-keys) endpoints accept a `decrypt` query parameter. If you set this to `true`, the key will be decrypted and returned in the response as `plaintext`.
-
-When recovering keys, your root key must have permission to decrypt. Head over to the [dashboard](https://app.unkey.com/settings/root-keys) and make sure the `decrypt_key` permission is enabled.
+// 权限要求
+恢复密钥时，您的根密钥必须具有解密权限。请访问仪表板并确保启用了 `decrypt_key` 权限。
 
 ```shell
 curl --request GET \
   --url https://api.unkey.dev/v1/keys.getKey?keyId={KEY_ID}&decrypt=true \
   --header 'Authorization: Bearer {ROOT_KEY}'
-
 {
   "ownerId": "ACME",
   "plaintext": "your-key-here",
@@ -42,27 +47,29 @@ curl --request GET \
 }
 ```
 
-This is also possible in our SDKs, but omitted here for brevity.
+这在我们的 SDK 中也是可能的，为简洁起见在此省略。
 
+## Opt in 启用步骤
 
-## Opt in
+// 功能启用流程
+我们要求您选择加入密钥恢复。要选择加入，请按照以下步骤操作：
 
-We require you to opt in to key recovery. To opt in, follow these steps:
+1. **根密钥权限设置:**
+创建新密钥时，您的根密钥必须具有加密权限。访问仪表板并确保启用了 encrypt_key 权限。
+不要跳过这一步。否则在尝试创建新密钥时，您的根密钥将被拒绝。
 
-1. **Root key permissions:**<br/>
-When creating new keys, your root key must have permission to encrypt. Head over to the dashboard and make sure the encrypt_key permission is enabled.
-Do not skip this step. Otherwise your root key will get rejected when trying to create new keys.
+2. **联系我们:**
+要选择加入恢复功能，请发送电子邮件至 support@unkey.dev。使用与工作区关联的电子邮件地址发送邮件，并包含您要启用恢复功能的 API ID。
 
-2. **Contact us:**<br/>
-To opt in to recovery, send us an email at support@unkey.dev. Send us the email from the email address associated with your workspace and include the API ID that you want to enable recovery for.
+## Documentation 文档
 
+// 更多资源
+您可以在[这里](https://www.unkey.com/docs/security/recovering-keys)找到文档。
 
-## Documentation
+## Support 支持
 
-You can find the documentation [here](https://www.unkey.com/docs/security/recovering-keys).
+// 获取帮助
+如果您对恢复功能有任何疑问，请通过 [Discord](https://unkey.com/discord) 或 [support@unkey.dev](mailto:support@unkey.dev) 与我们联系。
 
-## Support
-
-If you have any questions about recovery, please reach out to us on [Discord](https://unkey.com/discord) or at [support@unkey.dev](mailto:support@unkey.dev). 
-
-For security concerns, please disclose them responsibly by emailing [security@unkey.dev](mailto:security@unkey.dev) instead.
+// 安全问题报告
+对于安全问题，请通过发送电子邮件至 [security@unkey.dev](mailto:security@unkey.dev) 负责任地披露。

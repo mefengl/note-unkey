@@ -1,3 +1,25 @@
+/**
+ * @fileoverview 密钥验证API实现
+ * 
+ * 该文件实现了 Unkey 系统中最核心的密钥验证 API 接口。
+ * 当用户需要验证一个API密钥时，他们会调用此接口。
+ * 
+ * 主要功能：
+ * 1. 验证API密钥的有效性
+ * 2. 检查权限（RBAC）
+ * 3. 执行速率限制检查
+ * 4. 跟踪使用次数
+ * 5. 记录验证事件
+ * 
+ * 验证过程会检查多个方面：
+ * - 密钥是否存在且有效
+ * - 是否在正确的API下
+ * - 是否超出使用限制
+ * - 是否超出速率限制
+ * - 是否具有所需权限
+ * - 是否已过期
+ */
+
 import { UnkeyApiError, openApiErrorResponses } from "@/pkg/errors";
 import type { App } from "@/pkg/hono/app";
 import { DisabledWorkspaceError, MissingRatelimitError } from "@/pkg/keys/service";
@@ -5,6 +27,10 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { SchemaError } from "@unkey/error";
 import { permissionQuerySchema } from "@unkey/rbac";
 
+/**
+ * API路由定义
+ * 使用OpenAPI规范描述接口的请求和响应格式
+ */
 const route = createRoute({
   tags: ["keys"],
   operationId: "verifyKey",
@@ -17,20 +43,23 @@ const route = createRoute({
         "application/json": {
           schema: z
             .object({
+              // API ID，用于确定密钥属于哪个API
               apiId: z
                 .string()
                 .optional()
-                // .min(1) TODO enable after we stopped sending traffic from the agent
                 .openapi({
                   description: `The id of the api where the key belongs to. This is optional for now but will be required soon.
 The key will be verified against the api's configuration. If the key does not belong to the api, the verification will fail.`,
                   example: "api_1234",
                 }),
+
+              // 待验证的密钥
               key: z.string().min(1).openapi({
                 description: "The key to verify",
                 example: "sk_1234",
               }),
 
+              // 标签，用于分析和过滤验证事件
               tags: z
                 .array(z.string().min(1).max(128))
                 .max(10)
@@ -44,6 +73,8 @@ The key will be verified against the api's configuration. If the key does not be
                 `,
                   example: ["path=/v1/users/123", "region=us-east-1"],
                 }),
+
+              // 权限验证配置
               authorization: z
                 .object({
                   permissions: z.any(permissionQuerySchema).openapi("PermissionQuery", {
@@ -80,16 +111,14 @@ The key will be verified against the api's configuration. If the key does not be
                       },
                     ],
                     description: "A query for which permissions you require",
-                    //  example: {
-
-                    //   //   or: [{ and: ["dns.record.read", "dns.record.update"] }, "admin"],
-                    //  },
                   }),
                 })
                 .optional()
                 .openapi({
                   description: "Perform RBAC checks",
                 }),
+
+              // 剩余使用次数相关配置
               remaining: z
                 .object({
                   cost: z.number().int().default(1).openapi({
@@ -102,6 +131,8 @@ The key will be verified against the api's configuration. If the key does not be
                   description:
                     "Customize the behaviour of deducting remaining uses. When some of your endpoints are more expensive than others, you can set a custom `cost` for each.",
                 }),
+
+              // 单一速率限制配置（已弃用）
               ratelimit: z
                 .object({
                   cost: z.number().int().min(0).optional().default(1).openapi({
@@ -114,6 +145,8 @@ The key will be verified against the api's configuration. If the key does not be
                   deprecated: true,
                   description: `Use 'ratelimits' with \`[{ name: "default", cost: 2}]\``,
                 }),
+
+              // 多速率限制配置
               ratelimits: z
                 .array(
                   z.object({
@@ -126,12 +159,6 @@ The key will be verified against the api's configuration. If the key does not be
                         "Optionally override how expensive this operation is and how many tokens are deducted from the current limit.",
                       default: 1,
                     }),
-                    // identifier: z.string().optional().openapi({
-                    //   description:
-                    //     "The identifier used for ratelimiting. If omitted, we use the key's id.",
-                    //   default: "key id",
-                    // }),
-
                     limit: z.number().int().optional().openapi({
                       description: "Optionally override the limit.",
                     }),
@@ -144,19 +171,16 @@ The key will be verified against the api's configuration. If the key does not be
                 .openapi({
                   description: `You can check against multiple ratelimits when verifying a key. Let's say you are building an app that uses AI under the hood and you want to limit your customers to 500 requests per hour, but also ensure they use up less than 20k tokens per day.
                   `,
-                  externalDocs: {
-                    url: "https://www.unkey.com/docs/concepts/identities/ratelimits",
-                  },
                   example: [
                     {
                       name: "requests",
                       limit: 500,
-                      duration: 3_600_000,
+                      duration: 3_600_000, // 1小时
                     },
                     {
-                      name: "tokens",
+                      name: "tokens", 
                       limit: 20000,
-                      duration: 86_400_000,
+                      duration: 86_400_000, // 1天
                     },
                   ],
                 }),
@@ -168,7 +192,7 @@ The key will be verified against the api's configuration. If the key does not be
   },
   responses: {
     200: {
-      description: "The verification result",
+      description: "验证结果",
       content: {
         "application/json": {
           schema: z
@@ -309,6 +333,7 @@ These are validation codes, the HTTP status will be 200.
   },
 });
 
+// 类型导出
 export type V1KeysVerifyKeyRequest = z.infer<
   (typeof route.request.body.content)["application/json"]["schema"]
 >;
@@ -316,11 +341,19 @@ export type V1KeysVerifyKeyResponse = z.infer<
   (typeof route.responses)[200]["content"]["application/json"]["schema"]
 >;
 
+/**
+ * API处理函数注册
+ * 
+ * @param app - Hono应用实例
+ * @returns void
+ */
 export const registerV1KeysVerifyKey = (app: App) =>
   app.openapi(route, async (c) => {
+    // 1. 获取并验证请求参数
     const req = c.req.valid("json");
     const { keyService, analytics, logger } = c.get("services");
 
+    // 2. 调用密钥服务进行验证
     const { val, err } = await keyService.verifyKey(c, {
       key: req.key,
       apiId: req.apiId,
@@ -330,6 +363,7 @@ export const registerV1KeysVerifyKey = (app: App) =>
       remaining: req.remaining,
     });
 
+    // 3. 错误处理
     if (err) {
       switch (true) {
         case err instanceof SchemaError || err instanceof MissingRatelimitError:
@@ -349,11 +383,13 @@ export const registerV1KeysVerifyKey = (app: App) =>
       });
     }
 
+    // 4. 设置指标上下文
     c.set("metricsContext", {
       ...c.get("metricsContext"),
       keyId: val.key?.id,
     });
 
+    // 5. 处理密钥不存在的情况
     if (val.code === "NOT_FOUND") {
       return c.json({
         valid: false,
@@ -362,6 +398,7 @@ export const registerV1KeysVerifyKey = (app: App) =>
       });
     }
 
+    // 6. 构建响应数据
     const responseBody = {
       keyId: val.key?.id,
       valid: val.valid,
@@ -384,6 +421,8 @@ export const registerV1KeysVerifyKey = (app: App) =>
         : undefined,
       requestId: c.get("requestId"),
     };
+
+    // 7. 异步记录验证事件
     c.executionCtx.waitUntil(
       analytics
         .insertKeyVerification({
@@ -392,7 +431,6 @@ export const registerV1KeysVerifyKey = (app: App) =>
           workspace_id: val.key.workspaceId,
           key_space_id: val.key.keyAuthId,
           key_id: val.key.id,
-          // @ts-expect-error
           region: c.req.raw.cf.colo ?? "",
           outcome: val.code,
           identity_id: val.identity?.id,
@@ -408,5 +446,6 @@ export const registerV1KeysVerifyKey = (app: App) =>
         }),
     );
 
+    // 8. 返回验证结果
     return c.json(responseBody);
   });

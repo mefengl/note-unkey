@@ -3,7 +3,145 @@ title: Overview
 description: 'Access Control with Roles and Permissions'
 ---
 
-Role-Based Access Control (RBAC) is a security paradigm that restricts system access to authorized actors. It is based on the principle of assigning roles to actors and defining what actions or resources each role can access. We are taking this one step further and allowing you to attach arbitrary permissions to keys, for more flexibility (Coming in Q2). 
+# RBAC (基于角色的访问控制) 概述
 
+## 什么是RBAC？
 
+基于角色的访问控制（Role-Based Access Control，RBAC）是一种安全管理模型，用于限制和管理系统访问权限。它基于以下核心概念：
 
+1. **角色（Roles）**：
+   - 一组相关权限的集合
+   - 代表特定的职责或工作功能
+   - 可以被分配给多个用户或API密钥
+
+2. **权限（Permissions）**：
+   - 执行特定操作的能力
+   - 通常表示为具体的行为（如"创建用户"、"删除记录"等）
+   - 可以直接分配给密钥或通过角色间接分配
+
+3. **主体（Subjects）**：
+   - API密钥或其他认证实体
+   - 可以同时拥有多个角色
+   - 可以直接分配独立的权限
+
+## Unkey的RBAC实现
+
+在Unkey中，我们通过以下方式增强了传统的RBAC模型：
+
+### 1. 灵活的权限分配
+```typescript
+// 创建API密钥时分配权限
+await unkey.keys.create({
+  // ...其他配置
+  permissions: ["read:users", "write:posts"],
+  roles: ["editor", "moderator"]
+});
+```
+
+### 2. 权限验证
+```typescript
+// 验证密钥权限
+await unkey.keys.verify({
+  key: "uk_xxx",
+  authorization: {
+    permissions: {
+      and: ["read:users", "write:posts"]
+    }
+  }
+});
+```
+
+### 3. 细粒度控制
+可以实现复杂的权限组合：
+- AND条件：要求同时具有多个权限
+- OR条件：满足任一权限即可
+- 权限通配符：支持模式匹配
+- 环境隔离：区分开发和生产权限
+
+## 最佳实践
+
+1. **权限设计**
+   - 使用明确的命名约定（如 `resource:action`）
+   - 遵循最小权限原则
+   - 合理使用角色组织权限
+
+2. **角色规划**
+   - 基于实际业务场景定义角色
+   - 避免角色职责过于重叠
+   - 定期审查角色权限配置
+
+3. **权限管理**
+   - 实施权限变更审计
+   - 定期轮换高权限密钥
+   - 监控异常的权限使用模式
+
+## 权限查询语法
+
+Unkey支持灵活的权限查询语法：
+
+```typescript
+// 示例1：简单权限
+{
+  permissions: "user.read"
+}
+
+// 示例2：AND条件
+{
+  permissions: {
+    and: ["user.read", "post.write"]
+  }
+}
+
+// 示例3：OR条件
+{
+  permissions: {
+    or: ["admin.*", "moderator.manage"]
+  }
+}
+
+// 示例4：复杂组合
+{
+  permissions: {
+    and: [
+      "base.access",
+      {
+        or: ["user.write", "user.admin"]
+      }
+    ]
+  }
+}
+```
+
+## 实现注意事项
+
+1. **性能考虑**
+   - 权限检查被高度优化
+   - 使用缓存减少数据库查询
+   - 支持异步权限验证
+
+2. **安全建议**
+   - 始终验证所有关键操作的权限
+   - 实施权限检查的失败保护机制
+   - 记录权限验证失败的事件
+
+3. **可扩展性**
+   - 权限系统设计支持动态扩展
+   - 可以根据需求添加新的权限类型
+   - 支持自定义权限验证逻辑
+
+## 即将推出的功能
+
+1. **高级权限管理**
+   - 权限继承机制
+   - 动态权限规则
+   - 基于条件的权限授权
+
+2. **增强的审计**
+   - 详细的权限使用日志
+   - 权限变更追踪
+   - 异常使用检测
+
+3. **管理工具**
+   - 权限可视化界面
+   - 批量权限管理
+   - 权限分析报告

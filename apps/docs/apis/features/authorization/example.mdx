@@ -1,110 +1,145 @@
 ---
-title: Example
-description: RBAC in the almost-real world
+title: RBAC实践示例
+description: '通过实际场景学习RBAC的应用'
 ---
 
-Let's look at an example app for allowing your users to manage domains.
+# 域名管理系统的RBAC实践
 
-As part of the API, your users will be able to perform CRUD operations against domains or individual dns records.
+本教程将通过一个域名管理系统的例子，展示如何在实际应用中实现基于角色的访问控制（RBAC）。
+这个示例应用允许用户管理域名和DNS记录，需要实现不同级别的访问控制。
 
 <Steps>
-<Step titleSize="h2" title="Creating permissions">
-Users of our app can have the following permissions:
-- `domain.delete_domain`
+
+<Step titleSize="h2" title="第一步：创建权限">
+
+## 权限设计
+
+首先，我们需要定义系统中的具体权限。基于域名管理的业务需求，我们设计了以下权限：
+
+### 域名相关权限
+- `domain.create_domain` - 创建新域名
+- `domain.read_domain` - 查看域名信息
+- `domain.update_domain` - 更新域名配置
+- `domain.delete_domain` - 删除域名
+
+### DNS记录相关权限
+- `domain.dns.create_record` - 创建DNS记录
+- `domain.dns.read_record` - 查看DNS记录
+- `domain.dns.update_record` - 更新DNS记录
+- `domain.dns.delete_record` - 删除DNS记录
+
+> 在[Unkey控制台](https://app.unkey.com/authorization/permissions)创建这些权限。
+
+<Frame>
+  <img src="/apis/features/authorization/domains-permissions.png" alt="权限配置示例"/>
+</Frame>
+
+</Step>
+
+<Step titleSize="h2" title="第二步：定义角色">
+
+## 角色设计
+
+基于实际业务场景，我们定义三个不同职责的角色：
+
+### 1. 管理员(admin)
+- 完整的系统访问权限
+- 可以执行所有域名和DNS相关操作
+- 适合系统管理员使用
+
+### 2. DNS管理员(dns.manager)
+- 专注于DNS记录管理
+- 可以进行所有DNS记录操作
+- 但不能修改域名本身
+- 适合DNS运维人员使用
+
+### 3. 只读用户(read-only)
+- 仅可查看信息
+- 无修改权限
+- 适合审计人员或只需要查看配置的用户
+
+<Frame>
+  <img src="/apis/features/authorization/domains-roles.png" alt="角色配置示例"/>
+</Frame>
+
+> 在[Unkey控制台](https://app.unkey.com/authorization/roles)创建这些角色。
+
+</Step>
+
+<Step titleSize="h2" title="第三步：关联角色和权限">
+
+## 权限分配
+
+为每个角色分配相应的权限：
+
+<Tabs>
+<Tab title="管理员权限">
+管理员角色拥有所有权限：
+<Frame>
+  <img src="/apis/features/authorization/domains-roles-admin.png" alt="管理员权限配置"/>
+</Frame>
+</Tab>
+
+<Tab title="DNS管理员权限">
+DNS管理员仅拥有DNS记录相关权限：
+<Frame>
+  <img src="/apis/features/authorization/domains-roles-dns.manager.png" alt="DNS管理员权限配置"/>
+</Frame>
+</Tab>
+
+<Tab title="只读权限">
+只读用户仅有查看权限：
+<Frame>
+  <img src="/apis/features/authorization/domains-roles-read-only.png" alt="只读权限配置"/>
+</Frame>
+</Tab>
+</Tabs>
+
+</Step>
+
+<Step title="第四步：创建和配置API密钥">
+
+## API密钥管理
+
+创建API密钥并分配角色的两种方式：
+
+<Tabs>
+<Tab title="使用控制台">
+
+### 通过Web界面配置
+
+1. 进入API配置页面
+2. 选择"Keys"标签页
+3. 选择要配置的密钥
+4. 打开"Permissions"标签
+
+配置路径: `/app/keys/key_auth_???/key_???/permissions`
+
+#### 初始状态
+<Frame>
+  <img src="/apis/features/authorization/connections.png" alt="未配置的角色和权限"/>
+</Frame>
+
+#### 配置示例
+为密钥分配`dns.manager`和`read-only`角色：
+<Frame>
+  <img src="/apis/features/authorization/connections-connected.png" alt="已配置的角色和权限"/>
+</Frame>
+
+配置后，该密钥将获得以下权限：
 - `domain.dns.create_record`
 - `domain.dns.read_record`
 - `domain.dns.update_record`
 - `domain.dns.delete_record`
-- `domain.create_domain`
 - `domain.read_domain`
-- `domain.update_domain`
-
-Create them in your [dashboard](https://app.unkey.com/authorization/permissions).
-
-<Frame>
-  <img src="/apis/features/authorization/domains-permissions.png" alt="Example permissions"/>
-  </Frame>
-</Step>
-
-<Step titleSize="h2" title="Creating roles">
-
-
-And we define the following roles:
-- `admin`: An admin can do everything
-- `dns.manager`: Can create, read, update and delete dns records but not access the domain itself
-- `read-only`: Can read domain or dns record information.
-<Frame>
-  <img src="/apis/features/authorization/domains-roles.png" alt="Example roles"/>
-  </Frame>
-Create them in your [dashboard](https://app.unkey.com/authorization/roles) too.
-
-</Step>
-
-<Step titleSize="h2" title="Connecting">
-For each role, we need to connect the permissions it should have.
-Go to [/app/authorization/roles](https://app.unkey.com/authorization/roles) and click on the role to go to the permissions screen.
-
-<Tabs>
-<Tab title="admin">
-
-<Frame>
-  <img src="/apis/features/authorization/domains-roles-admin.png" alt="Admin roles"/>
-  </Frame>
-</Tab>
-
-<Tab title="dns.manager">
-
-<Frame>
-  <img src="/apis/features/authorization/domains-roles-dns.manager.png" alt="dns.manager roles"/>
-  </Frame>
-</Tab>
-<Tab title="read-only">
-
-<Frame>
-  <img src="/apis/features/authorization/domains-roles-read-only.png" alt="read-only roles"/>
-  </Frame>
-</Tab>
-</Tabs>
-
-
-
-</Step>
-<Step title="Create a key">
-Now that we have permissions and roles in place, we can connect them to keys.
-
-<Tabs>
-<Tab title="Dashboard">
-
-1. In the sidebar, click on one of your APIs
-2. Then click on `Keys` in the tabs
-3. Select one of your existing keys by clicking on it
-4. Go to the `Permissions` tab
-
-You should now be on `/app/keys/key_auth_???/key_???/permissions`
-
-<Frame>
-  <img src="/apis/features/authorization/connections.png" alt="Unconnected roles and permissions"/>
-  </Frame>
-
-
-  You can connect a role to your key by clicking on the checkbox in the graph.
-
-  Let's give this key the `dns.manager` and `read-only` roles.
-
-
-<Frame>
-  <img src="/apis/features/authorization/connections-connected.png" alt="Connected roles and permissions"/>
-  </Frame>
-
-As you can see, now the key is connected to the following permissions:
-`domain.dns.create_record`, `domain.dns.read_record`, `domain.dns.update_record`, `domain.dns.delete_record`, `domain.create_domain`, `domain.read_domain`
-
 
 </Tab>
 
-<Tab title="API">
+<Tab title="使用API">
 
-You can attach roles to a key when creating it by providing the role names as an array:
+### 通过API配置
+
+创建密钥时直接指定角色：
 
 ```bash
 curl -XPOST \
@@ -114,21 +149,65 @@ curl -XPOST \
   -d '{
     "apiId": "${API_ID}",
     "roles": [
-      "role1", "role2", "role3"
+      "dns.manager",
+      "read-only"
     ]
   }'
 ```
-See [here](/api-reference/keys/create) for details.
 
+> 详细API文档请参考 [创建密钥API文档](/api-reference/keys/create)
 
 </Tab>
 </Tabs>
+
 </Step>
 
-<Step title="Verifying Permissions">
+<Step title="第五步：权限验证">
 
-Now you can verify this key and perform permission checks. [Read more](/apis/features/authorization/verifying)
+## 实施权限检查
+
+现在您可以在应用中验证密钥权限，例如：
+
+```typescript
+// 验证是否有创建DNS记录的权限
+const verifyResult = await unkey.keys.verify({
+  key: "uk_xxxx",
+  authorization: {
+    permissions: ["domain.dns.create_record"]
+  }
+});
+
+if (verifyResult.valid && verifyResult.authorization?.valid) {
+  // 允许创建DNS记录
+} else {
+  // 拒绝访问
+}
+```
+
+更多权限验证细节请参考[权限验证指南](/apis/features/authorization/verifying)。
 
 </Step>
 
 </Steps>
+
+## 最佳实践建议
+
+1. **权限粒度控制**
+   - 遵循最小权限原则
+   - 根据业务场景合理划分权限
+   - 定期审查权限配置
+
+2. **角色设计原则**
+   - 基于实际工作职责定义角色
+   - 避免角色权限过度重叠
+   - 保持角色结构清晰简单
+
+3. **安全考虑**
+   - 实施权限检查日志记录
+   - 定期轮换高权限密钥
+   - 建立权限变更审计机制
+
+4. **维护建议**
+   - 及时更新文档
+   - 定期检查未使用的角色和权限
+   - 保持权限模型与业务需求同步

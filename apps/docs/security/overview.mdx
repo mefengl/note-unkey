@@ -4,12 +4,121 @@ description: 'How does Unkey work? What security measures are in place?'
 mode: "wide"
 ---
 
-## Why is Unkey secure? What makes it secure?
+/**
+ * Unkey安全设计概述
+ * 
+ * 本文档详细说明了Unkey系统的安全架构和措施。
+ * 包含以下核心内容：
+ * 1. 密钥存储安全
+ * 2. 密钥管理机制
+ * 3. 最佳实践建议
+ */
 
-Unkey is secure because we never store the API Key in our database. Instead we store a hash of the API Key. This means that even if our database is compromised, your API Keys are safe. You should follow a similar pattern in your own applications by providing the API key to your user and not storing it in your database either.
+# Unkey安全架构详解
 
-We manage the keys by using the unique id that each key is given when it is created. This id allows you as developer to update or delete the key, but this id cannot be used to verify the key.
+## 核心安全机制
 
-## Where are API keys stored?
+### 安全存储原则
+Unkey采用业界最佳实践来保护API密钥。我们的核心原则是：永远不在数据库中存储原始密钥。
+具体实现包括：
 
-We don't store API Keys, we store a hash of the API Key (sha256). This is then stored in our database. When you attempt to verify the API Key, we hash the API Key you provide and compare it to the hash we have stored. If they match, then the API Key is valid.
+1. **密钥哈希存储**
+   - 仅存储密钥的SHA-256哈希值
+   - 原始密钥仅在创建时返回给用户
+   - 即使数据库被攻破，攻击者也无法还原原始密钥
+
+2. **密钥管理机制**
+   - 每个密钥生成唯一ID用于管理
+   - 通过ID进行更新和删除操作
+   - ID不能用于验证，确保了管理和认证的分离
+
+3. **验证流程**
+   ```mermaid
+   sequenceDiagram
+      Client->>Unkey: 发送API密钥
+      Unkey->>Unkey: 计算SHA-256哈希
+      Unkey->>Database: 查询哈希值
+      Database->>Unkey: 返回匹配结果
+      Unkey->>Client: 返回验证结果
+   ```
+
+### 安全最佳实践
+
+为确保您的应用程序安全，我们强烈建议：
+
+1. **客户端处理**
+   - 永远不要在客户端存储密钥
+   - 使用安全的传输方式（如HTTPS）
+   - 实现适当的密钥轮换机制
+
+2. **服务端处理**
+   - 参考Unkey的实现，只存储密钥哈希
+   - 实现访问频率限制
+   - 记录详细的审计日志
+
+3. **应用架构**
+   - 实现合适的密钥作用域
+   - 使用最小权限原则
+   - 建立密钥泄露响应机制
+
+## 技术实现细节
+
+### 密钥存储
+```typescript
+// 示例：密钥处理流程
+async function processKey(apiKey: string) {
+  // 1. 计算哈希
+  const hash = await sha256(apiKey);
+  
+  // 2. 存储哈希和元数据
+  await db.keys.create({
+    hash,
+    metadata: {
+      createdAt: new Date(),
+      // ... 其他元数据
+    }
+  });
+  
+  // 3. 返回管理ID
+  return generateKeyId();
+}
+```
+
+### 验证流程
+```typescript
+// 示例：密钥验证流程
+async function verifyKey(apiKey: string) {
+  // 1. 计算待验证密钥的哈希
+  const hash = await sha256(apiKey);
+  
+  // 2. 在数据库中查找匹配的哈希
+  const key = await db.keys.findFirst({
+    where: { hash }
+  });
+  
+  // 3. 验证结果
+  return {
+    valid: !!key,
+    metadata: key?.metadata
+  };
+}
+```
+
+## 常见问题
+
+### Q: 为什么不加密存储API密钥？
+A: 哈希是单向操作，即使数据库被入侵，攻击者也无法还原原始密钥。而加密是可逆的，如果加密密钥泄露，所有API密钥都会受到威胁。
+
+### Q: 如何处理密钥泄露？
+A: 一旦发现密钥泄露：
+1. 立即通过管理ID禁用或删除该密钥
+2. 审查密钥的使用记录
+3. 生成新的密钥替换
+4. 更新使用该密钥的所有系统
+
+### Q: 密钥验证的性能如何？
+A: Unkey采用以下措施确保高性能：
+- 使用高效的SHA-256算法
+- 对数据库哈希字段建立索引
+- 实现多层缓存策略
+- 使用边缘计算加速验证

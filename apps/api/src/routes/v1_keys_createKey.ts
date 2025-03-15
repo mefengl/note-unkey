@@ -1,3 +1,16 @@
+/**
+ * @fileoverview API密钥创建实现
+ * 
+ * 该文件实现了Unkey系统中创建API密钥的核心功能。
+ * 它支持多种密钥配置选项，包括：
+ * 1. 基本配置（前缀、名称、长度等）
+ * 2. 权限控制（角色和权限）
+ * 3. 使用限制（过期时间、使用次数）
+ * 4. 速率限制
+ * 5. 自动补充策略
+ * 6. 密钥恢复功能
+ */
+
 import { type UnkeyAuditLog, insertUnkeyAuditLog } from "@/pkg/audit";
 import { rootKeyAuth } from "@/pkg/auth/root_key";
 import type { Database, Identity } from "@/pkg/db";
@@ -12,6 +25,10 @@ import { newId } from "@unkey/id";
 import { KeyV1 } from "@unkey/keys";
 import { buildUnkeyQuery } from "@unkey/rbac";
 
+/**
+ * API路由定义
+ * 使用OpenAPI规范描述接口的请求和响应格式
+ */
 const route = createRoute({
   tags: ["keys"],
   operationId: "createKey",
@@ -24,113 +41,130 @@ const route = createRoute({
       content: {
         "application/json": {
           schema: z.object({
+            // API ID，指定密钥所属的API
             apiId: z.string().openapi({
               description: "Choose an `API` where this key should be created.",
               example: "api_123",
             }),
+
+            // 密钥前缀，用于标识密钥的用途或来源
             prefix: z
               .string()
               .max(16)
               .optional()
               .openapi({
-                description: `To make it easier for your users to understand which product an api key belongs to, you can add prefix them.
-
-For example Stripe famously prefixes their customer ids with cus_ or their api keys with sk_live_.
-
-The underscore is automatically added if you are defining a prefix, for example: "prefix": "abc" will result in a key like abc_xxxxxxxxx
-`,
+                description: `自定义密钥前缀，帮助用户识别密钥来源。
+例如：Stripe使用sk_live_作为生产环境密钥前缀。
+如果设置了prefix，系统会自动添加下划线，如"abc"会生成"abc_xxxxxxxxx"格式的密钥。`,
               }),
 
+            // 密钥名称，仅供内部使用
             name: z.string().optional().openapi({
-              description: "The name for your Key. This is not customer facing.",
+              description: "密钥名称，仅供内部使用，不会展示给最终用户。",
               example: "my key",
             }),
+
+            // 密钥字节长度，影响密钥的安全性和长度
             byteLength: z.number().int().min(16).max(255).default(16).optional().openapi({
-              description:
-                "The byte length used to generate your key determines its entropy as well as its length. Higher is better, but keys become longer and more annoying to handle. The default is 16 bytes, or 2^^128 possible combinations.",
+              description: `密钥生成的字节长度，决定了密钥的熵值和长度。
+越长越安全，但也更难处理。默认16字节（2^128种可能组合）。`,
               default: 16,
             }),
+
+            // 用户ID，已废弃
             ownerId: z.string().optional().openapi({
               deprecated: true,
-              description: "Deprecated, use `externalId`",
+              description: "已废弃，请使用externalId",
               example: "team_123",
             }),
+
+            // 外部ID，用于关联到你的用户系统
             externalId: z
               .string()
               .optional()
               .openapi({
-                description: `Your user's Id. This will provide a link between Unkey and your customer record.
-When validating a key, we will return this back to you, so you can clearly identify your user from their api key.`,
+                description: `关联到你系统中的用户ID。
+在验证密钥时会返回此ID，方便你识别密钥属于哪个用户。`,
                 example: "team_123",
               }),
+
+            // 元数据，可存储任意额外信息
             meta: z
               .record(z.unknown())
               .optional()
               .openapi({
-                description:
-                  "This is a place for dynamic meta data, anything that feels useful for you should go here",
+                description: "可以存储任何对你有用的动态元数据",
                 example: {
                   billingTier: "PRO",
                   trialEnds: "2023-06-16T17:16:37.161Z",
                 },
               }),
+
+            // 角色列表
             roles: z
               .array(z.string().min(1).max(512))
               .optional()
               .openapi({
-                description:
-                  "A list of roles that this key should have. If the role does not exist, an error is thrown",
+                description: "分配给密钥的角色列表。如果角色不存在会抛出错误。",
                 example: ["admin", "finance"],
               }),
+
+            // 权限列表
             permissions: z
               .array(z.string().min(1).max(512))
               .optional()
               .openapi({
-                description:
-                  "A list of permissions that this key should have. If the permission does not exist, an error is thrown",
+                description: "分配给密钥的权限列表。如果权限不存在会抛出错误。",
                 example: ["domains.create_record", "say_hello"],
               }),
+
+            // 过期时间
             expires: z.number().int().optional().openapi({
-              description:
-                "You can auto expire keys by providing a unix timestamp in milliseconds. Once Keys expire they will automatically be disabled and are no longer valid unless you enable them again.",
+              description: `密钥的过期时间（毫秒时间戳）。
+过期后密钥会自动禁用，除非手动重新启用否则无法使用。`,
               example: 1623869797161,
             }),
+
+            // 剩余使用次数
             remaining: z
               .number()
               .int()
               .optional()
               .openapi({
-                description:
-                  "You can limit the number of requests a key can make. Once a key reaches 0 remaining requests, it will automatically be disabled and is no longer valid unless you update it.",
+                description: `限制密钥可以使用的次数。
+当剩余次数为0时，密钥会自动禁用，除非更新否则无法继续使用。`,
                 example: 1000,
                 externalDocs: {
-                  description: "Learn more",
+                  description: "了解更多",
                   url: "https://unkey.dev/docs/features/remaining",
                 },
               }),
+
+            // 自动补充配置
             refill: z
               .object({
+                // 补充间隔
                 interval: z.enum(["daily", "monthly"]).openapi({
-                  description: "Unkey will automatically refill verifications at the set interval.",
+                  description: "设置自动补充使用次数的间隔：每日或每月",
                 }),
+                // 补充数量
                 amount: z.number().int().min(1).positive().openapi({
-                  description:
-                    "The number of verifications to refill for each occurrence is determined individually for each key.",
+                  description: "每次补充的使用次数",
                 }),
+                // 补充日期（按月时可用）
                 refillDay: z
                   .number()
                   .min(1)
                   .max(31)
                   .optional()
                   .openapi({
-                    description: `The day of the month, when we will refill the remaining verifications. To refill on the 15th of each month, set 'refillDay': 15.
-                    If the day does not exist, for example you specified the 30th and it's february, we will refill them on the last day of the month instead.`,
+                    description: `每月补充的具体日期。例如设置15表示每月15日补充。
+如果该日期在当月不存在（如2月30日），会在月末补充。`,
                   }),
               })
               .optional()
               .openapi({
-                description:
-                  "Unkey enables you to refill verifications for each key at regular intervals.",
+                description: "设置定期自动补充使用次数的规则",
                 example: {
                   interval: "monthly",
                   amount: 100,
@@ -138,88 +172,94 @@ When validating a key, we will return this back to you, so you can clearly ident
                 },
               }),
 
+            // 速率限制配置
             ratelimit: z
               .object({
+                // 异步处理标志
                 async: z
                   .boolean()
                   .default(true)
                   .optional()
                   .openapi({
-                    description:
-                      "Async will return a response immediately, lowering latency at the cost of accuracy. Will be required soon.",
+                    description: `异步模式下会立即返回响应，降低延迟但牺牲一些准确性。
+此配置即将变为必选项。`,
                     externalDocs: {
-                      description: "Learn more",
+                      description: "了解更多",
                       url: "https://unkey.dev/docs/features/ratelimiting",
                     },
                   }),
+                // 限制类型（已废弃）
                 type: z
                   .enum(["fast", "consistent"])
                   .default("fast")
                   .optional()
                   .openapi({
-                    description:
-                      "Deprecated, use `async`. Fast ratelimiting doesn't add latency, while consistent ratelimiting is more accurate.",
+                    description: "已废弃，请使用async参数。fast模式无延迟但准确性较低，consistent模式相反。",
                     externalDocs: {
-                      description: "Learn more",
+                      description: "了解更多",
                       url: "https://unkey.dev/docs/features/ratelimiting",
                     },
                     deprecated: true,
                   }),
+                // 限制次数
                 limit: z.number().int().min(1).openapi({
-                  description: "The total amount of requests in a given interval.",
+                  description: "在给定时间窗口内允许的请求总数",
                 }),
+                // 时间窗口
                 duration: z.number().int().min(1000).optional().openapi({
-                  description: "The window duration in milliseconds. Will be required soon.",
+                  description: "时间窗口的长度（毫秒），此配置即将变为必选项",
                   example: 60_000,
                 }),
-
+                // 补充速率（已废弃）
                 refillRate: z.number().int().min(1).optional().openapi({
-                  description: "How many tokens to refill during each refillInterval.",
+                  description: "每个补充间隔添加的令牌数量",
                   deprecated: true,
                 }),
+                // 补充间隔（已废弃）
                 refillInterval: z.number().int().min(1).optional().openapi({
-                  description: "The refill timeframe, in milliseconds.",
+                  description: "补充间隔（毫秒）",
                   deprecated: true,
                 }),
               })
               .optional()
               .openapi({
-                description: "Unkey comes with per-key fixed-window ratelimiting out of the box.",
+                description: "内置的固定窗口速率限制配置",
                 example: {
                   type: "fast",
                   limit: 10,
                   duration: 60_000,
                 },
               }),
+
+            // 启用状态
             enabled: z.boolean().default(true).optional().openapi({
-              description: "Sets if key is enabled or disabled. Disabled keys are not valid.",
+              description: "设置密钥是否启用。禁用的密钥无法通过验证。",
               example: false,
             }),
+
+            // 可恢复性
             recoverable: z
               .boolean()
               .default(false)
               .optional()
               .openapi({
-                description: `You may want to show keys again later. While we do not recommend this, we leave this option open for you.
-
-In addition to storing the key's hash, recoverable keys are stored in an encrypted vault, allowing you to retrieve and display the plaintext later.
-
-[https://www.unkey.com/docs/security/recovering-keys](https://www.unkey.com/docs/security/recovering-keys) for more information.`,
+                description: `设置密钥是否可以恢复显示。
+虽然我们不推荐这样做，但为了灵活性保留了这个选项。
+可恢复的密钥除了存储哈希值外，还会将原文加密存储在vault中，
+这样之后可以检索并显示原始密钥。
+详见 https://www.unkey.com/docs/security/recovering-keys`,
               }),
+
+            // 环境标识
             environment: z
               .string()
               .max(256)
               .optional()
               .openapi({
-                description: `Environments allow you to divide your keyspace.
-
-Some applications like Stripe, Clerk, WorkOS and others have a concept of "live" and "test" keys to
-give the developer a way to develop their own application without the risk of modifying real world
-resources.
-
-When you set an environment, we will return it back to you when validating the key, so you can
-handle it correctly.
-              `,
+                description: `用于区分不同环境的密钥。
+类似Stripe、Clerk等服务都有"live"和"test"环境的概念，
+可以让开发者安全地开发应用而不影响生产环境。
+验证密钥时会返回此环境标识，方便你做相应处理。`,
               }),
           }),
         },
@@ -228,18 +268,16 @@ handle it correctly.
   },
   responses: {
     200: {
-      description: "The configuration for an api",
+      description: "密钥创建成功响应",
       content: {
         "application/json": {
           schema: z.object({
             keyId: z.string().openapi({
-              description:
-                "The id of the key. This is not a secret and can be stored as a reference if you wish. You need the keyId to update or delete a key later.",
+              description: "密钥ID，用于后续管理操作（如更新、删除等）。这不是机密信息，可以存储。",
               example: "key_123",
             }),
             key: z.string().openapi({
-              description:
-                "The newly created api key, do not store this on your own system but pass it along to your user.",
+              description: "新创建的API密钥。不要在你的系统中存储，而是直接传给你的用户。",
               example: "prefix_xxxxxxxxx",
             }),
           }),
@@ -250,6 +288,7 @@ handle it correctly.
   },
 });
 
+// 类型导出
 export type Route = typeof route;
 export type V1KeysCreateKeyRequest = z.infer<
   (typeof route.request.body.content)["application/json"]["schema"]
@@ -258,16 +297,23 @@ export type V1KeysCreateKeyResponse = z.infer<
   (typeof route.responses)[200]["content"]["application/json"]["schema"]
 >;
 
+/**
+ * API处理函数注册
+ * 实现密钥创建的核心逻辑
+ */
 export const registerV1KeysCreateKey = (app: App) =>
   app.openapi(route, async (c) => {
+    // 1. 请求参数验证
     const req = c.req.valid("json");
     const { cache, db, logger, vault, rbac } = c.get("services");
-
+    
+    // 2. Root Key认证
     const auth = await rootKeyAuth(
       c,
       buildUnkeyQuery(({ or }) => or("*", "api.*.create_key", `api.${req.apiId}.create_key`)),
     );
 
+    // 3. 加载API配置
     const { val: api, err } = await cache.apiById.swr(req.apiId, async () => {
       return (
         (await db.readonly.query.apis.findFirst({
@@ -280,20 +326,19 @@ export const registerV1KeysCreateKey = (app: App) =>
       );
     });
 
+    // 4. 错误处理
     if (err) {
       throw new UnkeyApiError({
         code: "INTERNAL_SERVER_ERROR",
         message: `unable to load api: ${err.message}`,
       });
     }
-
     if (!api || api.workspaceId !== auth.authorizedWorkspaceId) {
       throw new UnkeyApiError({
         code: "NOT_FOUND",
         message: `api ${req.apiId} not found`,
       });
     }
-
     if (!api.keyAuth) {
       throw new UnkeyApiError({
         code: "PRECONDITION_FAILED",
@@ -301,13 +346,13 @@ export const registerV1KeysCreateKey = (app: App) =>
       });
     }
 
+    // 5. 参数验证
     if (req.recoverable && !api.keyAuth.storeEncryptedKeys) {
       throw new UnkeyApiError({
         code: "PRECONDITION_FAILED",
         message: `api ${req.apiId} does not support recoverable keys`,
       });
     }
-
     if (req.remaining === 0) {
       throw new UnkeyApiError({
         code: "BAD_REQUEST",
@@ -326,15 +371,13 @@ export const registerV1KeysCreateKey = (app: App) =>
         message: "when interval is set to 'daily', 'refillDay' must be null.",
       });
     }
-    /**
-     * Set up an api for production
-     */
 
+    // 6. 准备创建密钥
     const authorizedWorkspaceId = auth.authorizedWorkspaceId;
     const rootKeyId = auth.key.id;
-
     const externalId = req.externalId ?? req.ownerId;
-
+    
+    // 7. 并行处理权限、角色和身份
     const [permissionIds, roleIds, identity] = await Promise.all([
       getPermissionIds(db.readonly, authorizedWorkspaceId, req.permissions ?? []),
       getRoleIds(db.readonly, authorizedWorkspaceId, req.roles ?? []),
@@ -343,6 +386,7 @@ export const registerV1KeysCreateKey = (app: App) =>
         : Promise.resolve(null),
     ]);
 
+    // 8. 生成新密钥（带重试机制）
     const newKey = await retry(5, async (attempt) => {
       if (attempt > 1) {
         logger.warn("retrying key creation", {
@@ -352,14 +396,16 @@ export const registerV1KeysCreateKey = (app: App) =>
         });
       }
 
+      // 8.1 生成密钥
       const secret = new KeyV1({
         byteLength: req.byteLength ?? api.keyAuth?.defaultBytes ?? 16,
         prefix: req.prefix ?? (api.keyAuth?.defaultPrefix as string | undefined),
       }).toString();
-
       const start = secret.slice(0, (req.prefix?.length ?? 0) + 5);
       const kId = newId("key");
       const hash = await sha256(secret.toString());
+
+      // 8.2 存储密钥信息
       await db.primary.insert(schema.keys).values({
         id: kId,
         keyAuthId: api.keyAuthId!,
@@ -385,6 +431,7 @@ export const registerV1KeysCreateKey = (app: App) =>
         identityId: identity?.id,
       });
 
+      // 8.3 处理可恢复密钥
       if (req.recoverable && api.keyAuth?.storeEncryptedKeys) {
         const perm = rbac.evaluatePermissions(
           buildUnkeyQuery(({ or }) => or("*", "api.*.encrypt_key", `api.${api.id}.encrypt_key`)),
@@ -403,6 +450,7 @@ export const registerV1KeysCreateKey = (app: App) =>
           });
         }
 
+        // 加密并存储原始密钥
         const vaultRes = await retry(
           3,
           async () => {
@@ -417,7 +465,6 @@ export const registerV1KeysCreateKey = (app: App) =>
               err: err.message,
             }),
         );
-
         await db.primary.insert(schema.encryptedKeys).values({
           workspaceId: authorizedWorkspaceId,
           keyId: kId,
@@ -426,6 +473,7 @@ export const registerV1KeysCreateKey = (app: App) =>
         });
       }
 
+      // 8.4 更新密钥计数
       c.executionCtx.waitUntil(revalidateKeyCount(db.primary, api.keyAuthId!));
 
       return {
@@ -434,6 +482,7 @@ export const registerV1KeysCreateKey = (app: App) =>
       };
     });
 
+    // 9. 关联角色和权限
     await Promise.all([
       roleIds.length > 0
         ? db.primary.insert(schema.keysRoles).values(
@@ -455,6 +504,7 @@ export const registerV1KeysCreateKey = (app: App) =>
         : Promise.resolve(),
     ]);
 
+    // 10. 记录审计日志
     const auditLogs: UnkeyAuditLog[] = [
       {
         workspaceId: authorizedWorkspaceId,
@@ -474,7 +524,6 @@ export const registerV1KeysCreateKey = (app: App) =>
             id: api.keyAuthId!,
           },
         ],
-
         context: {
           location: c.get("location"),
           userAgent: c.get("userAgent"),
@@ -527,14 +576,19 @@ export const registerV1KeysCreateKey = (app: App) =>
           }) satisfies UnkeyAuditLog,
       ),
     ];
-
     await insertUnkeyAuditLog(c, undefined, auditLogs);
+
+    // 11. 返回结果
     return c.json({
       keyId: newKey.id,
       key: newKey.secret,
     });
   });
 
+/**
+ * 获取权限ID列表
+ * 根据权限名称列表查找对应的权限ID
+ */
 async function getPermissionIds(
   db: Database,
   workspaceId: string,
@@ -565,6 +619,10 @@ async function getPermissionIds(
   return permissions.map((r) => r.id);
 }
 
+/**
+ * 获取角色ID列表
+ * 根据角色名称列表查找对应的角色ID
+ */
 async function getRoleIds(
   db: Database,
   workspaceId: string,
@@ -591,26 +649,33 @@ async function getRoleIds(
   return roles.map((r) => r.id);
 }
 
+/**
+ * 创建或更新身份信息
+ * 根据外部ID关联用户身份
+ */
 export async function upsertIdentity(
   db: Database,
   workspaceId: string,
   externalId: string,
 ): Promise<Identity> {
+  // 1. 查找现有身份
   let identity = await db.query.identities.findFirst({
     where: (table, { and, eq }) =>
       and(eq(table.workspaceId, workspaceId), eq(table.externalId, externalId)),
   });
+
+  // 2. 如果存在则直接返回
   if (identity) {
     return identity;
   }
 
+  // 3. 不存在则创建新身份
   await db
     .insert(schema.identities)
     .values({
       id: newId("identity"),
       createdAt: Date.now(),
       updatedAt: null,
-
       environment: "default",
       meta: {},
       externalId,
@@ -622,15 +687,18 @@ export async function upsertIdentity(
       },
     });
 
+  // 4. 获取新创建的身份
   identity = await db.query.identities.findFirst({
     where: (table, { and, eq }) =>
       and(eq(table.workspaceId, workspaceId), eq(table.externalId, externalId)),
   });
+
   if (!identity) {
     throw new UnkeyApiError({
       code: "INTERNAL_SERVER_ERROR",
       message: "Failed to read identity after upsert",
     });
   }
+
   return identity;
 }

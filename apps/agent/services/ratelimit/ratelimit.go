@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+// 速率限制服务实现
 func (s *service) Ratelimit(ctx context.Context, req *ratelimitv1.RatelimitRequest) (*ratelimitv1.RatelimitResponse, error) {
 	ctx, span := tracing.Start(ctx, "ratelimit.Ratelimit")
 	defer span.End()
@@ -76,10 +77,11 @@ func (s *service) Ratelimit(ctx context.Context, req *ratelimitv1.RatelimitReque
 	}
 
 	if req.Lease != nil {
+		// 创建租约信息
 		res.Lease = &ratelimitv1.Lease{
-			Identifier: req.Identifier,
-			Limit:      req.Limit,
-			Duration:   req.Duration,
+			Identifier: req.Identifier, // 请求标识符
+			Limit:      req.Limit,      // 限制次数
+			Duration:   req.Duration,   // 时间窗口
 		}
 	}
 

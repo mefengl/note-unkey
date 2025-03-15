@@ -11,9 +11,31 @@ tags: ["product", "engineering"]
 
 Unkey provides a way for you to create, manage and revoke API Keys that belong to your API. It's a simple concept, but one that we think is important. We built Unkey to layer it into your API so that you can issue keys, manage them and revoke them as needed. This means we need a simple and great DX and fast response times.
 
+## 为什么我们构建 Unkey
+
+// 市场现状分析
+作为开发者，我们经常需要为 API 添加认证层。虽然市场上已经有很多 API 密钥管理服务，但它们要么过于复杂，要么缺乏关键功能。
+
 ## Why did we build it?
 
 We built Unkey because we were tired of copying and pasting the same API management into a new codebase. Similar to authentication, you can do it yourself, but having a dedicated company that is working on improvements, and worrying about security and latency means you can focus on the business and core features.
+
+## 我们的使命 Our Mission
+
+// 核心理念
+我们的目标很简单：让 API 认证变得简单可靠。我们相信：
+
+1. **简单性是关键**
+   // 设计理念
+   - 开发者体验优先
+   - 最小化配置需求
+   - 直观的 API 设计
+
+2. **安全性不容妥协**
+   // 安全特性
+   - 端到端加密
+   - 零信任架构
+   - 完整的审计日志
 
 ## What are the current features?
 
@@ -28,6 +50,29 @@ Unkey provides the following features out of the box:
 - Rate limited keys
 
 - Metadata attached to keys
+
+## 主要功能 Core Features
+
+// 功能概览
+我们提供以下核心功能：
+
+### 1. API 密钥管理 
+// 密钥管理功能
+- 创建和撤销密钥
+- 精细的权限控制
+- 使用统计和监控
+
+### 2. 访问控制 
+// 访问控制特性
+- 基于角色的访问控制(RBAC)
+- IP 白名单
+- 速率限制
+
+### 3. 审计与监控
+// 监控功能
+- 实时使用统计
+- 详细的审计日志
+- 异常检测
 
 ## Deep dive into the features
 
@@ -75,3 +120,66 @@ Unkey was built to have minimal impact on your API, we have our database in the 
 On average our requests add less than 40ms to your requests, below are some of the latest requests we are monitoring through [Planetfall](https://planetfall.io)
 
 ![Unkey latency](/images/blog-images/unkey-latency.png)
+
+## 技术选择 Technical Decisions
+
+// 技术栈说明
+我们的技术选择基于以下考虑：
+
+1. **性能优先**
+   // 性能设计
+   - 边缘计算
+   - 内存优化
+   - 低延迟验证
+
+2. **可扩展性**
+   // 扩展性设计
+   - 微服务架构
+   - 无状态设计
+   - 容器化部署
+
+## 开源承诺 Open Source Commitment
+
+// 开源理念
+我们选择开源是因为：
+
+1. **透明度**
+   // 透明性说明
+   - 代码可审计
+   - 社区驱动
+   - 公开的开发过程
+
+2. **社区合作**
+   // 社区协作
+   - 欢迎贡献
+   - 共同成长
+   - 知识共享
+
+## 未来规划 Roadmap
+
+// 发展计划
+我们计划添加的功能：
+
+1. **更多集成**
+   // 集成计划
+   - 更多云服务提供商
+   - 更多框架支持
+   - 更多认证方式
+
+2. **高级功能**
+   // 高级特性
+   - 高级分析
+   - 自定义策略
+   - 更多安全选项
+
+## 加入我们 Join Us
+
+// 参与方式
+如果您对我们的愿景感兴趣：
+
+- 访问我们的 [GitHub](https://github.com/unkeyed/unkey)
+- 加入我们的 [Discord](https://unkey.dev/discord)
+- 关注我们的 [Twitter](https://twitter.com/unkeydev)
+
+// 结语
+我们相信 API 认证应该简单而强大。这就是我们构建 Unkey 的原因。

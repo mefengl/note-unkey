@@ -3,15 +3,85 @@ title: "Authentication"
 description: "How to authenticate your requests to Unkey's API"
 ---
 
-You'll need to authenticate your requests to access some of the endpoints in the Unkey API. In this guide, we'll look at how authentication works.
+/**
+ * Unkey API认证指南
+ * 
+ * 本文档介绍了如何正确地向Unkey API发送经过身份验证的请求。
+ * 主要包含以下内容：
+ * 1. Bearer Token认证方式的详细说明
+ * 2. Root Key的使用方法和安全建议
+ * 3. API请求示例
+ */
 
-## Bearer Token
+# API身份验证详解
 
-When requesting resources, you will need your root key — you will find it in the [Dashboard](https://app.unkey.com/settings/root-keys). Here's how to add the root key to the request header using cURL:
+Unkey采用行业标准的Bearer Token认证机制。要访问Unkey API的大多数端点，你需要进行身份验证。
+本指南将详细介绍认证的工作原理和最佳实践。
 
+## Bearer Token认证
+
+### 获取Root Key
+在发起API请求之前，你需要获取Root Key（根密钥）。Root Key是访问Unkey API的主要凭证。
+
+你可以通过以下步骤获取：
+1. 登录 [Unkey仪表盘](https://app.unkey.com/settings/root-keys)
+2. 进入设置页面
+3. 在Root Keys部分找到或创建新的Root Key
+
+### 使用Root Key
+要在API请求中使用Root Key，需要将其添加到请求头中。以下是几种常见的使用方式：
+
+#### 使用cURL发送请求
 ```bash
 curl https://api.unkey.dev/v1/... \
   -H "Authorization: Bearer unkey_xxx"
 ```
 
-Always keep your root key safe and reset it if you suspect it has been compromised.
+#### 使用JavaScript发送请求
+```javascript
+fetch('https://api.unkey.dev/v1/...', {
+  headers: {
+    'Authorization': 'Bearer unkey_xxx'
+  }
+})
+```
+
+#### 使用Python发送请求
+```python
+import requests
+
+headers = {
+    'Authorization': 'Bearer unkey_xxx'
+}
+response = requests.get('https://api.unkey.dev/v1/...', headers=headers)
+```
+
+## 安全最佳实践
+
+为确保你的API安全，请遵循以下建议：
+
+1. **密钥保护**
+   - 永远不要在客户端代码中硬编码Root Key
+   - 使用环境变量或安全的密钥管理系统存储Root Key
+   - 定期轮换Root Key
+   
+2. **密钥泄露处理**
+   - 如果怀疑Root Key已泄露，立即在仪表盘中重置
+   - 审查可能受到影响的系统和数据
+   - 检查API使用日志寻找异常活动
+
+3. **访问控制**
+   - 为不同的环境（开发、测试、生产）使用不同的Root Key
+   - 使用最小权限原则
+   - 定期审查API访问日志
+
+## 常见问题解答
+
+Q: 我的Root Key泄露了，该怎么办？  
+A: 立即在仪表盘中重置Root Key，并更新所有使用旧Key的应用程序。
+
+Q: 如何管理多个环境的Key？  
+A: 建议为每个环境（开发、测试、生产）创建独立的Root Key，并使用环境变量管理。
+
+Q: Root Key有过期时间吗？  
+A: Root Key默认不会过期，但建议定期轮换以提高安全性。

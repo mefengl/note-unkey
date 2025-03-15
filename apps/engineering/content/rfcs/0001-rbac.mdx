@@ -1,86 +1,147 @@
 ---
-title: 0001 RBAC
+title: RFC 0001 - RBAC实现方案
 authors:
   - Andreas Thomas
 date: 2023-12-12
 ---
 
+# RBAC (基于角色的访问控制) 设计方案
 
-To reduce the scope and time to implementation, we will be reducing our initial permission model to RBAC instead of ReBAC. This has fewer moving parts and can be implemented with just 1 new table.
+## 背景与目标
 
-There are many ways to store this data. Initially I had a 2 table setup, one for roles and one for an M:N relation between roles and keys, but there are some operational issues with that, mainly around planetscale’s foreignkeys and the lack of an easy “upsert” method. This requires us to query all roles of a workspace, then figuring out which ones are missing and creating them. For every key creation… That’s not amazing.
+为了降低实现复杂度并加快开发进度，我们决定将初始的权限模型从ReBAC(基于关系的访问控制)简化为RBAC。
+这种方案的优势在于：
+1. 组件更少，更容易实现
+2. 只需要添加一个数据库表
+3. 满足当前的核心需求
 
-Here’s a much simpler proposal using a single table:
+## 数据存储设计演进
 
-### Table Schema
+### 初始方案（已放弃）
+最初计划使用两个表：
+- 角色表：存储角色定义
+- 角色-密钥关联表：存储M:N关系
 
-- `id`
+放弃原因：
+1. PlanetScale数据库的外键限制
+2. 缺乏简单的"upsert"方法
+3. 每次创建密钥都需要查询工作区的所有角色，效率低下
 
-  unique id for this row
+### 优化方案（当前采用）
+使用单表设计，更简单高效。
 
-- `workspaceId`
+## 表结构设计
 
-    Every role is scoped to a workspace, no role sharing between tenants
+### 核心字段
+1. **id**: string
+   - 行记录的唯一标识
+   - 用于数据追踪和关联
 
-- `keyId`
+2. **workspaceId**: string
+   - 工作区标识
+   - 角色作用域限定
+   - 确保租户隔离，禁止跨租户角色共享
 
-    The key holding this role
+3. **keyId**: string
+   - 持有该角色的密钥ID
+   - 用于角色分配和权限验证
 
-- `role: string`
+4. **role**: string
+   - 角色名称，如 `finance`
+   - 最大长度限制：512字符
+   - 对于系统角色采用特定模式：`api::{id}::create_key`
 
-    the actual name of a role, ie: `finance` (or more elaborate, see below)
-    This is completely up to the user, the only limitation is a length ≤ 512chars
+### 索引设计
+为支持常见查询场景，需要建立以下索引：
+1. 按密钥查询角色
+2. 按工作区查询角色
+3. 按角色查询密钥
 
-    for our own roles, we’ll likely do some schema for roles, like `api::{id}::create_key`
+## 系统角色命名规范
 
-
-This single table design is the simplest form of doing roles. By adding indices for these queries, it should scale far enough:
-
-- roles by key
-- roles by workspace
-- keys by role
-
-### Unkey internal role schema
-
-`*` denotes either an id or a wildcard
-
-```tsx
-root_key::*::read_root_key
-root_key::*::create_root_key // a root key MUST NOT be allowed to create another key with more permissions than itself
-root_key::*::delete_root_key
-root_key::*::update_root_key
-api::*::create_api
-api::*::delete_api // either wildcard or a specific id -> api::api_123::delete_api
-api::*::read_api
-api::*::update_api
-api::*::read_key
-api::*::create_key
-api::*::update_key
-api::*::delete_key
+### Root Key权限
+```typescript
+// 根密钥管理
+root_key::*::read_root_key    // 读取根密钥
+root_key::*::create_root_key  // 创建根密钥（注意：新密钥权限不能超过创建者）
+root_key::*::delete_root_key  // 删除根密钥
+root_key::*::update_root_key  // 更新根密钥
 ```
 
-Some of these internal roles (`api::*::create_api`) seem overly complicated, because the wildcard will always be present, since it’s impossible to write this role in advance without knowing the api_id that will get generated later, but by sticking with this schema, we stay consistent and can build our types and tooling more easily.
+### API相关权限
+```typescript
+// API管理
+api::*::create_api   // 创建API
+api::*::delete_api   // 删除API（可用通配符或指定ID）
+api::*::read_api     // 读取API信息
+api::*::update_api   // 更新API配置
 
-We could go deeper like `api::*::keys::*::read_key` but I’m not convinced anyone needs this and it just adds complexity for now. It’s trivial to add more roles later, let’s wait it out.
-
-### Examples
-
-1. A key should be allowed to create new apis, modify them and be able to perform all actions on keys.
-
-```tsx
-api::*::create_api
-api::*::update_api
-api::*::read_key
-api::*::create_key
-api::*::update_key
-api::*::delete_key
+// 密钥管理
+api::*::read_key     // 读取密钥信息
+api::*::create_key   // 创建新密钥
+api::*::update_key   // 更新密钥
+api::*::delete_key   // 删除密钥
 ```
 
-2. Update access to one api and its keys, read access to all apis and their keys
+### 命名模式说明
+1. **通配符使用**
+   - `*` 表示任意ID或全局权限
+   - 例如：`api::*::create_api` 允许创建任何API
 
-```tsx
-api::api_123::update
-api::api_123::update_key
-api::*::read_api
-api::*::read_key
+2. **模式组成**
+   - 资源类型（api/root_key）
+   - 资源ID或通配符
+   - 操作类型（create/read/update/delete）
+
+3. **设计考虑**
+   - 看似复杂的通配符设计（如`api::*::create_api`）是为了：
+     1. 保持命名一致性
+     2. 支持未来可能的精细化控制
+     3. 简化类型系统和工具开发
+
+4. **简化决策**
+   - 暂不支持更深层次的权限（如`api::*::keys::*::read_key`）
+   - 原因：当前需求不强烈，避免过度设计
+   - 后续可以根据需求轻松扩展
+
+## 使用示例
+
+### 示例1：API全功能管理员
+需求：允许创建新API、修改API配置，以及管理所有密钥
+```typescript
+api::*::create_api   // 创建任何API
+api::*::update_api   // 更新任何API
+api::*::read_key     // 读取任何密钥
+api::*::create_key   // 创建新密钥
+api::*::update_key   // 更新任何密钥
+api::*::delete_key   // 删除任何密钥
 ```
+
+### 示例2：混合权限管理员
+需求：特定API的完整控制权+全局只读权限
+```typescript
+// 特定API的完整控制权
+api::api_123::update     // 更新指定API
+api::api_123::update_key // 管理指定API的密钥
+
+// 全局只读权限
+api::*::read_api         // 读取所有API
+api::*::read_key         // 读取所有密钥
+```
+
+## 扩展性考虑
+
+1. **角色粒度**
+   - 当前设计满足基本需求
+   - 保留了细粒度控制的可能性
+   - 可以根据需求动态添加新角色
+
+2. **性能优化**
+   - 单表设计减少了JOIN操作
+   - 合理的索引支持常见查询
+   - 支持未来的缓存优化
+
+3. **可维护性**
+   - 简单的数据结构易于维护
+   - 清晰的命名规范便于理解
+   - 统一的模式便于工具开发

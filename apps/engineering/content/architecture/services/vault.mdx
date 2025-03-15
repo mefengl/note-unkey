@@ -1,56 +1,134 @@
 ---
-title: Vault
-description: Secure encryption of secrets
+title: Vault加密服务
+description: '安全密钥加密管理服务'
 ---
-
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion"
 
-Vault is our encryption management service. It handles the full lifecycle of encrytion keys and allows you to encrypt and decrypt secrets. It does not store the secrets themselves.
+# Vault 加密服务架构
 
-Vault compiles to a single binary that can be run inside a container and requires an s3 compatible storage backend to store data.
+## 概述
 
-## Features
+Vault是Unkey的加密管理服务，负责：
+1. 加密密钥的全生命周期管理
+2. 提供加密和解密功能
+3. 实现安全的密钥存储策略
 
-- **Encryption**: Encrypt and decrypt secrets
-- **Key Management**: Supports multiple keyrings, key rolling and secret re-encryption.
-- **HTTP API**: Exposes an HTTP API via buf connect to interact with the service.
+特别说明：Vault本身不存储密钥原文，这是一个重要的安全设计决策。
 
+## 技术实现
 
-## Flow
+### 部署形式
+- 单一二进制文件
+- 容器化部署
+- 依赖S3兼容的存储后端
+
+### 核心功能
+
+1. **加密服务**
+   - 密钥加密与解密
+   - 支持多种加密算法
+   - 安全的密钥传输
+
+2. **密钥管理**
+   - 多密钥环(keyring)支持
+   - 密钥轮换机制
+   - 自动重新加密
+
+3. **服务接口**
+   - 基于buf connect的HTTP API
+   - 安全的RPC调用
+   - 完整的API文档
+
+## 工作流程
+
 ```mermaid
 sequenceDiagram
-    User->>API: request new key
-    API->>API: generate secret
-    API->>Vault: request encryption
-    Vault->>API: return encrypted
-    API->>Database: store encrypted
-    API->>User: return secret
+    User->>API: request new key            # 用户请求新密钥
+    API->>API: generate secret             # API生成密钥
+    API->>Vault: request encryption        # 请求加密服务
+    Vault->>API: return encrypted          # 返回加密结果
+    API->>Database: store encrypted        # 存储加密数据
+    API->>User: return secret              # 返回密钥给用户
 ```
 
-## Q/A
-### Why does vault not store secrets?
+## 安全设计
 
-Putting all of your secrets alongside with the encryption keys opens up a security risk. If an attacker gains access to the system, they can easily decrypt all of the secrets. By separating the encryption keys from the secrets, we can ensure that even if the attacker gains access to one system, they still can't do anything.
+### 分离存储原则
 
-- Encrypted secrets are stored in our main database.
-- Encryption keys are encrypted and stored by vault.
-- Only vault can decrypt the encryption keys and never hands out encryption keys to the outside world.
+Vault采用分离存储策略，不将密钥原文与加密密钥存储在同一位置。原因：
 
+1. **降低安全风险**
+   - 防止单点突破导致全系统沦陷
+   - 增加攻击者获取有效数据的难度
+   - 实现纵深防御
+
+2. **数据分布**
+   - 加密后的密钥存储在主数据库
+   - 加密密钥（经加密）存储在Vault
+   - Vault从不对外泄露加密密钥
+
+### 风险场景分析
 
 <Accordions>
-  <Accordion title="Scenario 1: Main database is leaked">
-    An attacker can see the encrypted secrets, but they can't decrypt them.
+  <Accordion title="场景1：主数据库泄露">
+    - 影响：攻击者可以看到加密后的密钥
+    - 防护：无法解密，因为缺少加密密钥
+    - 结果：数据仍然安全
   </Accordion>
 
-  <Accordion title="Scenario 2: Vault database is leaked">
-    An attacker can see the encrypted encryption-keys, but they can't decrypt them
+  <Accordion title="场景2：Vault数据库泄露">
+    - 影响：攻击者可以看到加密的加密密钥
+    - 防护：无法解密，因为缺少主密钥
+    - 结果：加密系统仍然安全
   </Accordion>
-  <Accordion title="Scenario 3: Vault database and master keys are leaked">
-    If vault's database is compromised, it's not unlikely they also have access to the master key, used to decrypt the encryption-keys. In this case, the attacker may decrypt the encryption-keys, but still does not have access to the ciphertexts, as they are stored in the
-    main database.
+
+  <Accordion title="场景3：Vault数据库和主密钥泄露">
+    即使在最严重的情况下：
+    - 攻击者获得了Vault数据库
+    - 攻击者获得了主密钥
+    - 可以解密加密密钥
+    
+    但仍然：
+    - 无法访问主数据库中的加密数据
+    - 无法完成完整的解密链条
+    - 系统的核心数据仍然安全
   </Accordion>
 </Accordions>
 
-### Why a container and not cloudflare workers?
+## 技术选型
 
-This once again comes down to caching
+### 为什么选择容器而不是Cloudflare Workers？
+
+考虑因素：
+
+1. **缓存需求**
+   - 加密服务需要高效的本地缓存
+   - 需要维护加密密钥的状态
+   - Workers无状态特性不适合此场景
+
+2. **性能考虑**
+   - 容器可以利用本地资源
+   - 减少网络延迟
+   - 提供更稳定的性能
+
+3. **部署灵活性**
+   - 支持多种部署方式
+   - 便于本地开发和测试
+   - 容易集成到现有基础设施
+
+## 最佳实践
+
+1. **密钥管理**
+   - 定期轮换加密密钥
+   - 实施最小权限原则
+   - 建立密钥备份机制
+
+2. **监控和审计**
+   - 记录所有加密操作
+   - 监控异常访问模式
+   - 定期安全审查
+
+3. **灾难恢复**
+   - 制定密钥恢复流程
+   - 定期演练恢复程序
+   - 保持文档更新
