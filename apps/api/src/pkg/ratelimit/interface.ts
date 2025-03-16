@@ -2,7 +2,9 @@ import { BaseError, type Result } from "@unkey/error";
 import type { Context } from "hono";
 import { z } from "zod";
 
+// 速率限制错误类，用于处理所有速率限制相关的错误
 export class RatelimitError extends BaseError {
+  // 表示该错误不应该重试
   public readonly retry = false;
   public readonly name = RatelimitError.name;
 }
@@ -39,8 +41,12 @@ export const ratelimitResponseSchema = z.object({
 });
 export type RatelimitResponse = z.infer<typeof ratelimitResponseSchema>;
 
+// 速率限制器接口定义
 export interface RateLimiter {
+  // 对单个请求进行速率限制检查
   limit: (c: Context, req: RatelimitRequest) => Promise<Result<RatelimitResponse, RatelimitError>>;
+  
+  // 对多个请求同时进行速率限制检查
   multiLimit: (
     c: Context,
     req: Array<RatelimitRequest>,

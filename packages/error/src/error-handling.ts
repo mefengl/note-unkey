@@ -12,7 +12,9 @@ import type { BaseError } from "./errors/base";
 
 /**
  * 成功结果类型
- * 包装成功的返回值
+ * 包装成功情况下的返回值
+ * 
+ * @template T 成功值的类型
  */
 export type Ok<T> = {
   readonly ok: true;
@@ -21,7 +23,9 @@ export type Ok<T> = {
 
 /**
  * 错误结果类型
- * 包装错误信息
+ * 包装失败情况下的错误信息
+ * 
+ * @template E 错误值的类型
  */
 export type Err<E> = {
   readonly ok: false;
@@ -30,18 +34,29 @@ export type Err<E> = {
 
 /**
  * 结果类型
- * 要么是成功的结果，要么是错误
+ * 表示一个操作的两种可能结果：成功或失败
+ * 
+ * @template T 成功值的类型
+ * @template E 错误值的类型
+ * 
+ * @example
+ * type 除法结果 = Result<number, "除数不能为零">;
+ * type 用户查询 = Result<User, "用户不存在">;
  */
 export type Result<T, E> = Ok<T> | Err<E>;
 
 /**
  * 创建一个成功的结果
- * @param value 成功的返回值
+ * 包装成功的返回值
+ * 
+ * @template T 成功值的类型
+ * @param value 要包装的值
+ * @returns 包装后的成功结果
  * 
  * @example
  * function divide(a: number, b: number): Result<number, string> {
  *   if (b === 0) {
- *     return Err("除数不能为0");
+ *     return Err("除数不能为零");
  *   }
  *   return Ok(a / b);
  * }
@@ -52,7 +67,11 @@ export function Ok<T>(value?: T): Ok<T> {
 
 /**
  * 创建一个错误的结果
+ * 包装错误信息
+ * 
+ * @template E 错误值的类型
  * @param error 错误信息
+ * @returns 包装后的错误结果
  * 
  * @example
  * function findUser(id: string): Result<User, string> {
@@ -72,20 +91,50 @@ export function Err<E>(error: E): Err<E> {
  * 捕获可能发生的错误并包装为Result
  * 
  * @param promise 要执行的异步操作
- * @returns 包装了成功值或错误的Result
+ * @returns Promise<Result<T, E>>
  * 
  * @example
- * const result = await wrapAsync(fetchUserData(userId));
+ * const result = await toResult(fetchUserData(userId));
  * if (result.ok) {
- *   console.log("获取用户数据成功:", result.value);
+ *   console.log("用户数据:", result.value);
  * } else {
  *   console.error("获取失败:", result.error);
  * }
  */
-export async function wrapAsync<T>(promise: Promise<T>): Promise<Result<T, Error>> {
+export async function toResult<T, E = unknown>(
+  promise: Promise<T>,
+): Promise<Result<T, E>> {
   try {
     return Ok(await promise);
-  } catch (e) {
-    return Err(e as Error);
+  } catch (error) {
+    return Err(error as E);
   }
+}
+
+/**
+ * 处理Result的辅助函数
+ * 根据结果类型执行不同的回调函数
+ * 
+ * @param result 要处理的结果
+ * @param handlers 处理函数对象
+ * @returns 处理后的值
+ * 
+ * @example
+ * const result = divide(10, 2);
+ * const message = match(result, {
+ *   ok: (value) => `结果是: ${value}`,
+ *   err: (error) => `出错了: ${error}`
+ * });
+ */
+export function match<T, E, U>(
+  result: Result<T, E>,
+  handlers: {
+    ok: (value: T) => U;
+    err: (error: E) => U;
+  },
+): U {
+  if (result.ok) {
+    return handlers.ok(result.value);
+  }
+  return handlers.err(result.error);
 }

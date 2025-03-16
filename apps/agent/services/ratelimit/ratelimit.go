@@ -13,6 +13,11 @@ import (
 )
 
 // 速率限制服务实现
+// Ratelimit 处理速率限制请求，包括:
+// 1. 检查本地和远程计数器状态
+// 2. 在需要时与源节点同步
+// 3. 维护租约信息
+// 4. 处理错误并提供回退机制
 func (s *service) Ratelimit(ctx context.Context, req *ratelimitv1.RatelimitRequest) (*ratelimitv1.RatelimitResponse, error) {
 	ctx, span := tracing.Start(ctx, "ratelimit.Ratelimit")
 	defer span.End()
@@ -89,8 +94,8 @@ func (s *service) Ratelimit(ctx context.Context, req *ratelimitv1.RatelimitReque
 
 }
 
-// ratelimitOrigin forwards the ratelimit request to the origin node and updates
-// the local state to reflect the true state
+// ratelimitOrigin 将速率限制请求转发到源节点并更新本地状态
+// 用于确保分布式系统中的数据一致性
 func (s *service) ratelimitOrigin(ctx context.Context, req *ratelimitv1.RatelimitRequest) (*ratelimitv1.RatelimitResponse, error) {
 	ctx, span := tracing.Start(ctx, "ratelimit.RatelimitOrigin")
 	defer span.End()

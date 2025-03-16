@@ -1,79 +1,93 @@
+/**
+ * Unkey API 客户端的核心实现
+ * 该文件实现了与 Unkey API 服务交互的所有主要功能，包括：
+ * - API密钥管理（创建、更新、验证、删除等）
+ * - API资源管理
+ * - 速率限制管理
+ * - 身份管理
+ * - 数据分析查询
+ * - 迁移工具
+ */
 import type { PermissionQuery } from "@unkey/rbac";
 import type { ErrorResponse } from "./errors";
 import type { paths } from "./openapi";
-
 import { type Telemetry, getTelemetry } from "./telemetry";
 
+/**
+ * Unkey 客户端的配置选项
+ * 提供两种认证方式：rootKey(推荐)或废弃的token方式
+ */
 export type UnkeyOptions = (
   | {
       token?: never;
-
       /**
-       * The root key from unkey.dev.
-       *
-       * You can create/manage your root keys here:
+       * 从 unkey.dev 获取的根密钥。
+       * 
+       * 你可以在这里创建/管理你的根密钥:
        * https://unkey.dev/app/settings/root-keys
        */
       rootKey: string;
     }
   | {
       /**
-       * The workspace key from unkey.dev
-       *
-       * @deprecated Use `rootKey`
+       * 从 unkey.dev 获取的工作区密钥
+       * 
+       * @deprecated 推荐使用 `rootKey`
        */
       token: string;
       rootKey?: never;
     }
 ) & {
   /**
+   * API 服务的基础 URL
    * @default https://api.unkey.dev
    */
   baseUrl?: string;
-
   /**
-   *
-   * By default telemetry data is enabled, and sends:
-   * runtime (Node.js / Edge)
-   * platform (Node.js / Vercel / AWS)
-   * SDK version
+   * 遥测数据配置
+   * 默认情况下遥测数据是启用的，会发送以下数据：
+   * - 运行时环境 (Node.js / Edge)
+   * - 平台 (Node.js / Vercel / AWS)
+   * - SDK 版本
    */
   disableTelemetry?: boolean;
-
   /**
-   * Retry on network errors
+   * 网络错误重试配置
    */
   retry?: {
     /**
-     * How many attempts should be made
-     * The maximum number of requests will be `attempts + 1`
-     * `0` means no retries
+     * 重试次数设置
+     * 最大请求数将是 `attempts + 1`
+     * `0` 表示不重试
      *
      * @default 5
      */
     attempts?: number;
     /**
-     * Return how many milliseconds to wait until the next attempt is made
+     * 返回下一次尝试前等待的毫秒数
      *
      * @default `(retryCount) => Math.round(Math.exp(retryCount) * 10)),`
      */
     backoff?: (retryCount: number) => number;
   };
   /**
-   * Customize the `fetch` cache behaviour
+   * 自定义 `fetch` 缓存行为
    */
   cache?: RequestCache;
-
   /**
-   * The version of the SDK instantiating this client.
+   * 实例化此客户端的 SDK 版本。
    *
-   * This is used for internal metrics and is not covered by semver, and may change at any time.
+   * 用于内部指标，不受语义版本控制，可能随时更改。
    *
-   * You can leave this blank unless you are building a wrapper around this SDK.
+   * 除非你正在构建此 SDK 的包装器，否则可以将其留空。
    */
   wrapperSdkVersion?: string;
 };
 
+/**
+ * API请求的内部类型定义
+ * 支持GET和POST两种请求方法，并相应地配置查询参数或请求体
+ */
 type ApiRequest = {
   path: string[];
 } & (
@@ -89,6 +103,10 @@ type ApiRequest = {
     }
 );
 
+/**
+ * API响应结果的类型定义
+ * 结果要么包含成功的结果数据，要么包含错误信息，但不会同时存在
+ */
 type Result<R> =
   | {
       result: R;
@@ -104,17 +122,29 @@ type Result<R> =
       };
     };
 
+/**
+ * Unkey 客户端主类
+ * 提供与 Unkey API 交互的所有方法
+ */
 export class Unkey {
+  /** API 服务的基础 URL */
   public readonly baseUrl: string;
+  /** 用于认证的根密钥 */
   private readonly rootKey: string;
+  /** 可选的请求缓存配置 */
   private readonly cache?: RequestCache;
+  /** 遥测数据配置 */
   private readonly telemetry?: Telemetry | null;
-
+  /** 重试配置 */
   public readonly retry: {
     attempts: number;
     backoff: (retryCount: number) => number;
   };
 
+  /**
+   * 构造一个新的 Unkey 客户端实例
+   * @param opts 客户端配置选项
+   */
   constructor(opts: UnkeyOptions) {
     this.baseUrl = opts.baseUrl ?? "https://api.unkey.dev";
     this.rootKey = opts.rootKey ?? opts.token;
@@ -138,6 +168,10 @@ export class Unkey {
     };
   }
 
+  /**
+   * 获取请求头，包括认证信息和遥测数据
+   * @returns 请求头对象
+   */
   private getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -155,6 +189,11 @@ export class Unkey {
     return headers;
   }
 
+  /**
+   * 执行API请求的内部方法，支持重试逻辑
+   * @param req API请求配置
+   * @returns 请求结果
+   */
   private async fetch<TResult>(req: ApiRequest): Promise<Result<TResult>> {
     let res: Response | null = null;
     let err: Error | null = null;
@@ -212,6 +251,10 @@ export class Unkey {
     };
   }
 
+  /**
+   * API密钥管理相关方法
+   * 包括创建、更新、验证、删除等操作
+   */
   public get keys() {
     return {
       create: async (
@@ -309,6 +352,9 @@ export class Unkey {
     };
   }
 
+  /**
+   * API资源管理相关方法
+   */
   public get apis() {
     return {
       create: async (
@@ -361,6 +407,10 @@ export class Unkey {
       },
     };
   }
+
+  /**
+   * 速率限制管理相关方法
+   */
   public get ratelimits() {
     return {
       limit: async (
@@ -432,6 +482,10 @@ export class Unkey {
       },
     };
   }
+
+  /**
+   * 身份管理相关方法
+   */
   public get identities() {
     return {
       create: async (
@@ -502,6 +556,9 @@ export class Unkey {
     };
   }
 
+  /**
+   * 数据分析查询相关方法
+   */
   public get analytics() {
     return {
       getVerifications: async (
@@ -520,6 +577,9 @@ export class Unkey {
     };
   }
 
+  /**
+   * 迁移工具相关方法
+   */
   public get migrations() {
     return {
       createKeys: async (

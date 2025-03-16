@@ -11,15 +11,12 @@ import (
 	"github.com/unkeyed/unkey/go/pkg/otel/logging"
 )
 
-// WithErrorHandling 返回一个错误处理中间件
-// 根据错误标签将错误转换为适当的HTTP响应:
-//
-//   - NOT_FOUND: 404 资源未找到
-//   - BAD_REQUEST: 400 请求格式错误
-//   - UNAUTHORIZED: 401 未经身份验证
-//   - FORBIDDEN: 403 权限不足
-//   - PROTECTED_RESOURCE: 412 前置条件不满足
-//   - 其他错误: 500 服务器内部错误
+// HTTP错误处理中间件
+// 
+// 将各种错误转换为标准的HTTP响应格式。
+// 想象这是一个翻译官：
+// - 把程序内部的错误语言
+// - 转换成客户端能看懂的HTTP响应
 //
 // 示例:
 //
@@ -34,7 +31,7 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 
 			if err == nil {
 				return nil
-			}
+				}
 
 			 // 记录错误步骤
 			errorSteps := fault.Flatten(err)
@@ -71,7 +68,7 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 			switch fault.GetTag(err) {
 			case fault.NOT_FOUND:
 				return s.JSON(http.StatusNotFound, api.NotFoundError{
-					Title:     "Not Found",
+					Title:     "未找到资源",
 					Type:      "https://unkey.com/docs/errors/not_found",
 					Detail:    fault.UserFacingMessage(err),
 					RequestId: s.requestID,
@@ -81,7 +78,7 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 
 			case fault.BAD_REQUEST:
 				return s.JSON(http.StatusBadRequest, api.BadRequestError{
-					Title:     "Bad Request",
+					Title:     "请求无效",
 					Type:      "https://unkey.com/docs/errors/bad_request",
 					Detail:    fault.UserFacingMessage(err),
 					RequestId: s.requestID,
@@ -92,7 +89,7 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 
 			case fault.UNAUTHORIZED:
 				return s.JSON(http.StatusUnauthorized, api.UnauthorizedError{
-					Title:     "Unauthorized",
+					Title:     "未授权",
 					Type:      "https://unkey.com/docs/errors/unauthorized",
 					Detail:    fault.UserFacingMessage(err),
 					RequestId: s.requestID,
@@ -102,7 +99,7 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 
 			case fault.FORBIDDEN:
 				return s.JSON(http.StatusForbidden, api.ForbiddenError{
-					Title:     "Forbidden",
+					Title:     "禁止访问",
 					Type:      "https://unkey.com/docs/errors/forbidden",
 					Detail:    fault.UserFacingMessage(err),
 					RequestId: s.requestID,
@@ -142,7 +139,7 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 
 			// 处理所有未分类的错误
 			return s.JSON(http.StatusInternalServerError, api.InternalServerError{
-				Title:     "Internal Server Error",
+				Title:     "服务器内部错误",
 				Type:      "https://unkey.com/docs/errors/internal_server_error",
 				Detail:    fault.UserFacingMessage(err),
 				RequestId: s.requestID,

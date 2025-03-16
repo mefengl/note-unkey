@@ -13,6 +13,13 @@
 /**
  * 错误上下文类型
  * 记录错误发生时的具体情况，可以是任何额外信息
+ * 
+ * @example
+ * {
+ *   userId: "123",
+ *   action: "删除文件",
+ *   timestamp: "2023-01-01"
+ * }
  */
 export type ErrorContext = Record<string, unknown>;
 
@@ -25,52 +32,70 @@ export type ErrorContext = Record<string, unknown>;
  *   name = "网络错误"
  *   retry = true  // 网络错误通常可以重试
  * }
- * 
- * @example
- * class 格式错误 extends BaseError {
- *   name = "格式错误"
- *   retry = false // 格式错误需要修改后才能重试
- * }
  */
 export abstract class BaseError<
-  // 错误上下文的类型，默认是基础的ErrorContext
   TContext extends ErrorContext = ErrorContext
 > extends Error {
   /**
    * 错误是否可以通过重试解决
-   * 子类必须实现这个属性
+   * 比如：
+   * - 网络超时：可以重试 ✅
+   * - 语法错误：不能重试 ❌
    */
   public abstract readonly retry: boolean;
 
   /**
-   * 导致这个错误的原因
-   * 比如：数据库连接错误导致了查询错误
+   * 导致这个错误的原因（错误链）
+   * 
+   * 比如：
+   * 1. 数据库连接失败
+   * 2. 导致查询失败
+   * 3. 导致用户信息获取失败
    */
   public readonly cause: BaseError | undefined;
 
   /**
-   * 错误发生时的具体情况
-   * 比如：发生错误时的参数值、状态等
+   * 错误发生时的详细信息
+   * 帮助开发者理解错误发生的具体场景
+   * 
+   * @example
+   * {
+   *   function: "getUserData",
+   *   parameters: { id: 123 },
+   *   state: "初始化数据库连接"
+   * }
    */
   public readonly context: TContext | undefined;
 
   /**
-   * 错误的具体描述信息
+   * 错误消息
+   * 清晰描述发生了什么问题
    */
   public readonly message: string;
 
   /**
-   * 错误的类型名称
-   * 子类必须实现这个属性
+   * 错误类型名称
+   * 用于快速识别错误类别
+   * 
+   * @example
+   * "DatabaseError", "ValidationError", "NetworkError"
    */
   public abstract readonly name: string;
 
   /**
    * 创建一个新的错误实例
-   * @param opts 错误的配置信息
-   * - message: 错误描述
-   * - cause: 导致这个错误的原因（可选）
-   * - context: 错误发生时的具体情况（可选）
+   * 
+   * @param opts 错误配置对象
+   * @param opts.message 错误描述
+   * @param opts.cause 导致这个错误的原因
+   * @param opts.context 错误发生时的详细信息
+   * 
+   * @example
+   * new DatabaseError({
+   *   message: "无法连接到数据库",
+   *   cause: networkError,
+   *   context: { host: "db.example.com" }
+   * })
    */
   constructor(opts: {
     message: string;
@@ -84,11 +109,15 @@ export abstract class BaseError<
   }
 
   /**
-   * 把错误转换成易读的文字
-   * 就像把错误报告单整理成一段容易理解的话
+   * 生成错误的详细描述
+   * 包含错误类型、消息、上下文和原因
    * 
-   * 比如：
-   * "作业错误：没写完整 - 在第3页第2题 - 因为没带课本"
+   * @returns 格式化的错误信息
+   * 
+   * @example
+   * DatabaseError: 连接超时 
+   * - 上下文: {"host":"db.example.com","retry":3}
+   * - 原因: NetworkError: DNS解析失败
    */
   public toString(): string {
     return `${this.name}: ${this.message} - ${JSON.stringify(

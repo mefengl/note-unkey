@@ -8,6 +8,12 @@
 </div>
 <br/>
 
+# 中文注释项目 (Chinese Comments Project)
+
+为了提高代码的可理解性并方便中文开发者学习，我们正在为核心文件添加中文注释。目前进行的工作：
+
+- [/packages/api/src/openapi.d.ts](packages/api/src/openapi.d.ts) - API类型定义文件的中文注释
+
 # 代码阅读推荐顺序
 
 ## 1. 核心基础设施层

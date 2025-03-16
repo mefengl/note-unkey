@@ -1,14 +1,10 @@
 /**
- * HTTP错误处理系统
+ * HTTP错误处理模块
  * 
- * 想象你在处理客户服务请求：
- * - 客户填错了表格（400 Bad Request）
- * - 客户没有会员卡（401 Unauthorized）
- * - 客户想进入员工专用区（403 Forbidden）
- * - 客户要找的商品不存在（404 Not Found）
- * - 系统发生了故障（500 Internal Error）
- * 
- * 这个模块定义了API服务可能返回的所有错误类型
+ * 负责:
+ * 1. 将业务错误转换为标准的HTTP响应
+ * 2. 统一错误格式
+ * 3. 提供错误追踪能力
  */
 
 import { z } from "@hono/zod-openapi";
@@ -24,20 +20,20 @@ import { parseZodErrorMessage } from "../util/zod-error";
  * 定义所有可能的错误类型
  */
 const ErrorCode = z.enum([
-  "BAD_REQUEST",           // 请求格式错误
-  "FORBIDDEN",            // 没有权限
-  "INTERNAL_SERVER_ERROR", // 服务器内部错误
-  "USAGE_EXCEEDED",       // 使用超限
-  "DISABLED",            // 功能已禁用
-  "NOT_FOUND",           // 资源不存在
-  "CONFLICT",            // 资源冲突
-  "RATE_LIMITED",        // 请求过于频繁
-  "UNAUTHORIZED",        // 未授权
-  "PRECONDITION_FAILED", // 前置条件不满足
-  "INSUFFICIENT_PERMISSIONS", // 权限不足
-  "METHOD_NOT_ALLOWED",  // 方法不允许
-  "EXPIRED",            // 已过期
-  "DELETE_PROTECTED",    // 受保护无法删除
+  "BAD_REQUEST",           // 请求格式错误（例：缺少必需参数）
+  "FORBIDDEN",            // 没有权限（例：普通用户访问管理功能）
+  "INTERNAL_SERVER_ERROR", // 服务器内部错误（例：数据库崩溃）
+  "USAGE_EXCEEDED",       // 使用超限（例：API调用次数超限）
+  "DISABLED",            // 功能已禁用（例：系统维护中）
+  "NOT_FOUND",           // 资源不存在（例：访问已删除的数据）
+  "CONFLICT",            // 资源冲突（例：创建重名用户）
+  "RATE_LIMITED",        // 请求过于频繁（例：每秒请求次数过多）
+  "UNAUTHORIZED",        // 未授权（例：未登录）
+  "PRECONDITION_FAILED", // 前置条件不满足（例：版本号不匹配）
+  "INSUFFICIENT_PERMISSIONS", // 权限不足（例：无法执行高级操作）
+  "METHOD_NOT_ALLOWED",  // 方法不允许（例：对只读资源发送POST）
+  "EXPIRED",            // 已过期（例：token过期）
+  "DELETE_PROTECTED",    // 受保护无法删除（例：系统关键数据）
 ]);
 
 /**
@@ -70,22 +66,22 @@ export function errorSchemaFactory(code: z.ZodEnum<any>) {
 }
 
 /**
- * 标准错误响应模式
- * 定义了所有API错误的统一格式
+ * 错误响应格式
+ * 定义API错误的标准返回格式
  */
 export const ErrorSchema = z.object({
   error: z.object({
     code: ErrorCode.openapi({
       description: "机器可读的错误代码",
-      example: "INTERNAL_SERVER_ERROR",
+      example: "BAD_REQUEST",
     }),
     docs: z.string().openapi({
       description: "指向详细文档的链接",
-      example: "https://unkey.dev/docs/api-reference/errors/code/INTERNAL_SERVER_ERROR",
+      example: "https://unkey.dev/docs/api-reference/errors/code/BAD_REQUEST",
     }),
     message: z.string().openapi({
       description: "人类可读的错误说明",
-      example: "发生了意外错误，请稍后重试",
+      example: "名称字段不能为空",
     }),
     requestId: z.string().openapi({
       description: "用于追踪和调试的请求ID",
@@ -99,19 +95,21 @@ export type ErrorResponse = z.infer<typeof ErrorSchema>;
 /**
  * 将错误代码转换为HTTP状态码
  * 
- * @param code 错误代码
+ * @param code 错误代码 
  * @returns HTTP状态码
+ * 
+ * @example
+ * codeToStatus("NOT_FOUND") => 404
+ * codeToStatus("INTERNAL_SERVER_ERROR") => 500
  */
 function codeToStatus(code: z.infer<typeof ErrorCode>): StatusCode {
   switch (code) {
     case "BAD_REQUEST":
       return 400;
-    case "FORBIDDEN":
-    case "DISABLED":
     case "UNAUTHORIZED":
+      return 401;
+    case "FORBIDDEN":
     case "INSUFFICIENT_PERMISSIONS":
-    case "USAGE_EXCEEDED":
-    case "EXPIRED":
       return 403;
     case "NOT_FOUND":
       return 404;
@@ -119,21 +117,23 @@ function codeToStatus(code: z.infer<typeof ErrorCode>): StatusCode {
       return 405;
     case "CONFLICT":
       return 409;
-    case "DELETE_PROTECTED":
     case "PRECONDITION_FAILED":
+    case "DELETE_PROTECTED":
       return 412;
     case "RATE_LIMITED":
       return 429;
+    case "USAGE_EXCEEDED":
+      return 429;
     case "INTERNAL_SERVER_ERROR":
+    case "DISABLED":
+    case "EXPIRED":
       return 500;
   }
 }
 
 /**
- * 将HTTP状态码转换为错误代码
- * 
- * @param status HTTP状态码
- * @returns 错误代码
+ * HTTP状态码到错误代码的映射
+ * 确保API返回一致的错误格式
  */
 function statusToCode(status: StatusCode): z.infer<typeof ErrorCode> {
   switch (status) {
@@ -147,33 +147,50 @@ function statusToCode(status: StatusCode): z.infer<typeof ErrorCode> {
       return "NOT_FOUND";
     case 405:
       return "METHOD_NOT_ALLOWED";
-    case 500:
-      return "INTERNAL_SERVER_ERROR";
+    case 409:
+      return "CONFLICT";
+    case 412:
+      return "PRECONDITION_FAILED";
+    case 429:
+      return "RATE_LIMITED";
     default:
       return "INTERNAL_SERVER_ERROR";
   }
 }
 
 /**
- * 自定义API错误类
- * 
- * @extends HTTPException
+ * API错误基类
+ * 所有自定义API错误都应该继承这个类
  */
 export class UnkeyApiError extends HTTPException {
   public readonly code: z.infer<typeof ErrorCode>;
 
-  constructor({ code, message }: { code: z.infer<typeof ErrorCode>; message: string }) {
-    super(codeToStatus(code), { message });
-    this.code = code;
+  constructor(opts: {
+    code: z.infer<typeof ErrorCode>;
+    message: string;
+    cause?: Error;
+  }) {
+    super(codeToStatus(opts.code), {
+      message: opts.message,
+      cause: opts.cause,
+    });
+    this.code = opts.code;
   }
 }
 
 /**
- * 处理Zod验证错误
+ * Zod验证错误处理器
+ * 将Zod的错误信息转换为标准API响应格式
  * 
- * @param result Zod验证结果
- * @param c Hono上下文
- * @returns JSON响应
+ * @param result - Zod验证结果
+ * @param c - Hono上下文
+ * @returns 格式化的错误响应
+ * 
+ * @example
+ * const result = userSchema.safeParse(data);
+ * if (!result.success) {
+ *   return handleZodError(result, c);
+ * }
  */
 export function handleZodError(
   result:
@@ -203,21 +220,20 @@ export function handleZodError(
 }
 
 /**
- * 处理错误
+ * 统一错误处理函数
+ * 处理API中可能出现的各种错误，转换成标准格式
  * 
  * @param err 错误对象
  * @param c Hono上下文
- * @returns JSON响应
+ * @returns JSON错误响应
  */
 export function handleError(err: Error, c: Context<HonoEnv>): Response {
   const { logger } = c.get("services");
 
-  /**
-   * 我们可以很好地处理这个错误，因为这是我们自己抛出的
-   */
+  // 处理已知的API错误
   if (err instanceof UnkeyApiError) {
     if (err.status >= 500) {
-      logger.error("returning 5XX", {
+      logger.error("返回5XX错误", {
         message: err.message,
         name: err.name,
         code: err.code,
@@ -237,12 +253,10 @@ export function handleError(err: Error, c: Context<HonoEnv>): Response {
     );
   }
 
-  /**
-   * 来自hono的HTTPExceptions至少给了我们一些处理的线索，因为它们提供了状态和消息
-   */
+  // 处理Hono框架的HTTP错误
   if (err instanceof HTTPException) {
     if (err.status >= 500) {
-      logger.error("HTTPException", {
+      logger.error("Hono HTTP异常", {
         message: err.message,
         status: err.status,
         requestId: c.get("requestId"),
@@ -262,10 +276,8 @@ export function handleError(err: Error, c: Context<HonoEnv>): Response {
     );
   }
 
-  /**
-   * 我们在这里迷失了，只能返回500并记录日志以供调查
-   */
-  logger.error("unhandled exception", {
+  // 处理未预期的错误
+  logger.error("未处理的异常", {
     name: err.name,
     message: err.message,
     cause: err.cause,
@@ -277,7 +289,7 @@ export function handleError(err: Error, c: Context<HonoEnv>): Response {
       error: {
         code: "INTERNAL_SERVER_ERROR",
         docs: "https://unkey.dev/docs/api-reference/errors/code/INTERNAL_SERVER_ERROR",
-        message: err.message ?? "something unexpected happened",
+        message: err.message ?? "发生了意外的错误",
         requestId: c.get("requestId"),
       },
     },
@@ -286,18 +298,25 @@ export function handleError(err: Error, c: Context<HonoEnv>): Response {
 }
 
 /**
- * 返回错误响应
+ * 创建标准的错误响应
  * 
  * @param c Hono上下文
  * @param code 错误代码
  * @param message 错误消息
- * @returns JSON响应
+ * @returns JSON错误响应
+ * 
+ * @example
+ * return errorResponse(c, "NOT_FOUND", "找不到指定的用户")
  */
-export function errorResponse(c: Context, code: z.infer<typeof ErrorCode>, message: string) {
+export function errorResponse(
+  c: Context,
+  code: z.infer<typeof ErrorCode>,
+  message: string,
+) {
   return c.json<z.infer<typeof ErrorSchema>>(
     {
       error: {
-        code: code,
+        code,
         docs: `https://unkey.dev/docs/api-reference/errors/code/${code}`,
         message,
         requestId: c.get("requestId"),
