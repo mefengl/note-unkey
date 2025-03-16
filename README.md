@@ -30,18 +30,27 @@
 - [/apps/docs/apis/features/authorization/example.mdx](apps/docs/apis/features/authorization/example.mdx) - RBAC使用示例
 - [/apps/engineering/content/rfcs/0001-rbac.mdx](apps/engineering/content/rfcs/0001-rbac.mdx) - RBAC设计RFC
 
-## 4. 安全存储
+## 4. 速率限制实现
 
-- [/apps/engineering/content/architecture/services/vault.mdx](apps/engineering/content/architecture/services/vault.mdx) - Vault服务架构
-- [/apps/engineering/content/rfcs/0002-github-secret-scanning.mdx](apps/engineering/content/rfcs/0002-github-secret-scanning.mdx) - Github密钥扫描集成
+- [/apps/engineering/content/architecture/services/api/ratelimiting.mdx](apps/engineering/content/architecture/services/api/ratelimiting.mdx) - 速率限制架构设计
+- [/apps/docs/apis/features/ratelimiting/modes.mdx](apps/docs/apis/features/ratelimiting/modes.mdx) - 速率限制模式说明
+- [/apps/docs/ratelimiting/introduction.mdx](apps/docs/ratelimiting/introduction.mdx) - 速率限制功能概述
+- [/apps/api/src/routes/v1_ratelimits_limit.ts](apps/api/src/routes/v1_ratelimits_limit.ts) - 速率限制API实现
 
-## 5. 集成示例
+## 5. 高级功能
+
+- [/apps/docs/apis/features/remaining.mdx](apps/docs/apis/features/remaining.mdx) - 使用次数限制说明 *
+- [/apps/docs/apis/features/revocation.mdx](apps/docs/apis/features/revocation.mdx) - 密钥吊销机制 *
+- [/apps/docs/ratelimiting/automated-overrides.mdx](apps/docs/ratelimiting/automated-overrides.mdx) - 自动化覆盖规则 *
+
+## 6. 集成示例
 
 - [/apps/www/content/blog/using-unkey-with-auth.mdx](apps/www/content/blog/using-unkey-with-auth.mdx) - 认证服务集成指南
 - [/apps/www/content/blog/secure-supabase-functions-using-unkey.mdx](apps/www/content/blog/secure-supabase-functions-using-unkey.mdx) - Supabase函数集成
 - [/apps/www/content/blog/cli-auth.mdx](apps/www/content/blog/cli-auth.mdx) * - CLI认证集成指南
+- [/apps/www/content/blog/ratelimiting-otp.mdx](apps/www/content/blog/ratelimiting-otp.mdx) * - OTP速率限制实践指南
 
-## 6. 扩展功能
+## 7. 项目愿景与架构 *
 
 - [/apps/www/content/blog/why-we-built-unkey.mdx](apps/www/content/blog/why-we-built-unkey.mdx) * - 项目愿景与功能概览
 - [/apps/www/content/blog/vault.mdx](apps/www/content/blog/vault.mdx) * - 密钥恢复功能说明

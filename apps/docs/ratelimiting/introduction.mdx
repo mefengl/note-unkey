@@ -4,6 +4,19 @@ description: Ratelimit your serverless functions.
 mode: "wide"
 ---
 
+/**
+ * Unkey速率限制功能介绍
+ * 
+ * 核心价值：
+ * 1. 解决Serverless环境下的限流难题
+ * 2. 提供全局一致的低延迟限流服务
+ * 3. 保护上游服务免受过载
+ * 
+ * 主要挑战：
+ * - Serverless函数无状态特性
+ * - 分布式环境下的状态协调
+ * - 全局限流的延迟控制
+ */
 
 Serverless functions offer a ton of benefits but unfortunately make some things much harder too.
 Ratelimiting is one of these things as it requires some persistent state to coordinate different limits.
@@ -11,17 +24,60 @@ Ratelimiting is one of these things as it requires some persistent state to coor
 Unkey's ratelimit API provides a global low latency solution to limit your functions and protect
 upstream services.
 
-
 ## Get your API key
+
+/**
+ * API密钥获取指南
+ * 
+ * 使用前准备：
+ * 1. 访问Unkey控制台
+ * 2. 创建具有限流权限的根密钥
+ * 3. 安全保存密钥信息
+ * 
+ * 权限要求说明：
+ * - create_namespace：允许创建新的限流命名空间
+ * - limit：允许执行限流操作
+ */
 
 <Steps>
   <Step title="Go to the dashboard">
+    /**
+     * 第一步：访问控制台
+     * 
+     * 注意事项：
+     * - 需要先注册/登录Unkey账号
+     * - 确保有足够的权限创建密钥
+     */
     Visit [/app/settings-root-keys/new](https://app.unkey.com/settings/root-keys/new)
   </Step>
+
   <Step title="Enter a name">
+    /**
+     * 第二步：设置密钥名称
+     * 
+     * 最佳实践：
+     * - 使用有意义的名称便于管理
+     * - 可包含使用场景或用途信息
+     * - 推荐格式：{环境}-{用途}-{编号}
+     */
     You can give your key a name to make it easier to find later, but that's optional.
   </Step>
+
   <Step title="Add permissions">
+    /**
+     * 第三步：配置所需权限
+     * 
+     * 必需权限详解：
+     * 1. create_namespace权限
+     *    - 用于创建新的限流空间
+     *    - 通常在初始化时使用
+     *    - 建议限制使用范围
+     * 
+     * 2. limit权限
+     *    - 执行实际的限流操作
+     *    - 所有限流请求必需
+     *    - 可以细分到具体命名空间
+     */
     Your key needs at least these permissions:
     - `create_namespace`
     - `limit`
@@ -30,24 +86,62 @@ upstream services.
     <img src="/ratelimiting/create-root-key-permissions.png"/>
     </Frame>
 
+    /**
+     * 重要安全提示：
+     * 1. 密钥创建后需立即保存
+     * 2. 使用环境变量方式存储
+     * 3. 避免硬编码到代码中
+     * 4. 定期轮换密钥保证安全
+     */
+    After selecting both permissions, click `Create New Key` at the bottom of the page and copy the generated key to your `.env` file.
+    For security reasons, this key can not be shown again. In case you lose it, you need to create a new one.
 
-  After selecting both permissions, click `Create New Key` at the bottom of the page and copy the generated key to your `.env` file.
-  For security reasons, this key can not be shown again. In case you lose it, you need to create a new one.
-  <Frame>
-
+    <Frame>
       <img src="/ratelimiting/copy-key.png"/>
-
-  </Frame>
+    </Frame>
   </Step>
-
 </Steps>
 
 ## Ratelimit your functions
+
+/**
+ * 限流功能实现指南
+ * 
+ * 开发语言支持：
+ * 1. TypeScript/JavaScript (官方SDK)
+ * 2. 其他语言通过HTTP API调用
+ * 
+ * 集成方式：
+ * - SDK直接调用（推荐）
+ * - RESTful API访问
+ * - 自定义客户端封装
+ * 
+ * 使用建议：
+ * 1. 优先使用官方SDK
+ * 2. 合理设置超时和重试
+ * 3. 实现优雅降级机制
+ * 4. 监控限流指标
+ */
 
 <Info>
 We're currently only offering a Typescript SDK but you can check out the [api reference](/api-reference/ratelimits/limit) and do the network call manually if you are using another language.
 Also please let us know what language you're using, so we can prioritize adding support for it.
 </Info>
 
+/**
+ * TypeScript SDK使用说明
+ * 
+ * 主要功能：
+ * 1. 自动创建命名空间
+ * 2. 处理限流请求
+ * 3. 提供限流状态
+ * 4. 支持自定义配置
+ * 
+ * 配置项说明：
+ * - 限流阈值
+ * - 时间窗口
+ * - 限流策略
+ * - 异常处理
+ */
 
 Please follow the [@unkey/ratelimit](/libraries/ts/ratelimit) documentation for setup and configuration options.

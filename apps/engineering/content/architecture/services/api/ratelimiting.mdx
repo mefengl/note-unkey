@@ -2,55 +2,234 @@
 title: Rate Limiting Architecture
 ---
 
+/**
+ * 速率限制架构设计文档
+ * 
+ * 本文档详细介绍了Unkey的分布式速率限制系统的设计与实现。
+ * 整个系统主要解决以下核心问题：
+ * 1. 如何在分布式环境中准确追踪和限制API调用频率
+ * 2. 如何平衡系统的准确性和性能
+ * 3. 如何实现跨区域的一致性控制
+ */
+
 Rate limiting is a critical component of our infrastructure, ensuring accurate and robust rate limiting for our customers. This document provides an in-depth look at our rate limiting architecture, explaining each component and concept in detail.
 
 ## Cluster Formation
 
+/**
+ * 集群构建机制
+ * 
+ * 系统采用两阶段的集群构建方案：
+ * 1. 初始发现阶段：使用Redis作为临时注册中心
+ * 2. 运行时阶段：使用gossip协议维护集群状态
+ * 
+ * 这种设计既保证了快速启动，又确保了长期运行的稳定性
+ */
+
 ### Redis for Initial Discovery:
+
+/**
+ * Redis初始发现机制
+ * 
+ * 工作原理：
+ * 1. 新节点启动时将自己的信息写入Redis
+ * 2. 信息包含：节点ID、网络地址、负载情况等
+ * 3. 使用TTL机制自动清理失效节点
+ * 4. 其他节点可以通过Redis发现新加入的节点
+ * 
+ * 优势：
+ * - 无需硬编码节点地址
+ * - 支持动态扩缩容
+ * - 自动剔除故障节点
+ */
 
 Redis serves as a temporary storage solution to facilitate the initial discovery of nodes. Each node writes its unique identifier and network address to Redis with a 60-second Time-To-Live (TTL), ensuring information is refreshed and stale data is removed. This allows for quick cluster formation without pre-configuring nodes with peer addresses.
 
 ### Memberlist for Cluster Management:
 
-After discovery through Redis, nodes switch to using HashiCorp’s memberlist library, which handles node joining, leaving, and failure detection via a gossip protocol. This protocol allows for decentralized communication and efficient scaling with the number of nodes.
+/**
+ * Memberlist集群管理
+ * 
+ * 使用HashiCorp的memberlist库实现去中心化的集群管理：
+ * 1. 节点状态同步：通过gossip协议传播节点信息
+ * 2. 故障检测：快速识别故障节点并从集群中移除
+ * 3. 自动恢复：支持节点自动重新加入集群
+ * 
+ * gossip协议工作机制：
+ * - 节点定期随机选择几个邻居节点通信
+ * - 传播集群状态信息和节点健康状况
+ * - 收敛速度与节点数量对数相关，扩展性好
+ */
+
+After discovery through Redis, nodes switch to using HashiCorp's memberlist library, which handles node joining, leaving, and failure detection via a gossip protocol. This protocol allows for decentralized communication and efficient scaling with the number of nodes.
 
 ## Load Balancing
+
+/**
+ * 负载均衡设计
+ * 
+ * 采用两级负载均衡架构：
+ * 1. 全局负载均衡：实现跨区域的流量调度
+ * 2. 区域负载均衡：处理区域内的细粒度分发
+ * 
+ * 关键特性：
+ * - 就近接入：用户请求路由到最近的区域
+ * - 故障转移：支持区域级别的容灾
+ * - 动态伸缩：根据负载自动调整资源
+ */
 
 Our architecture employs both global and regional load balancers. The global load balancer directs traffic to regional load balancers, which then distribute traffic randomly across nodes within a region. This random distribution requires coordination among nodes to ensure accurate rate limiting.
 
 ## Rate Limit Coordination Strategies
 
+/**
+ * 速率限制协调策略
+ * 
+ * 系统提供三种协调策略，可根据场景选择：
+ * 1. 全量复制：适用于高准确性要求场景
+ * 2. 超限通知：适用于性能敏感场景
+ * 3. 混合方案：平衡准确性和性能的折中方案
+ */
+
 ### Full Replication:
+
+/**
+ * 全量复制策略
+ * 
+ * 工作原理：
+ * 1. 所有请求信息复制到所有节点
+ * 2. 每个节点都维护完整的限制状态
+ * 
+ * 适用场景：
+ * - 对限制准确度要求极高的场景
+ * - 集群节点数量较少的情况
+ * - 网络带宽充足的环境
+ */
 
 Every request is replicated to all nodes, providing high accuracy but resulting in high network overhead.
 
 ### Limit Exceeded Notification:
 
+/**
+ * 超限通知策略
+ * 
+ * 工作流程：
+ * 1. 正常请求仅在本地处理
+ * 2. 仅当检测到超限时广播通知
+ * 3. 其他节点收到通知后更新本地状态
+ * 
+ * 优势：
+ * - 极大减少网络通信
+ * - 适合大规模集群
+ * - 支持突发流量处理
+ */
+
 Nodes notify others only when a rate limit is exceeded, minimizing communication but reducing accuracy.
 
 ### Hybrid Approach:
 
-Origin Node Concept: Consistent hashing determines a specific "origin node" for each client identifier. The origin node acts as the source of truth for rate limiting data.
+/**
+ * 混合协调策略
+ * 
+ * 核心概念：
+ * 1. 源节点(Origin Node)：每个客户端的主要负责节点
+ * 2. 一致性哈希：确定请求与节点的映射关系
+ * 3. 本地缓存：减少跨节点查询
+ * 
+ * 工作流程：
+ * 1. 请求到达任意节点时先查本地缓存
+ * 2. 缓存未命中则查询源节点
+ * 3. 定期异步同步各节点状态
+ * 4. 超限时立即广播通知
+ */
 
+Origin Node Concept: Consistent hashing determines a specific "origin node" for each client identifier. The origin node acts as the source of truth for rate limiting data.
 Nodes cache rate limit data locally and asynchronously update the origin node, reducing latency. When a node detects a limit exceedance, it broadcasts this information to all nodes to prevent further requests.
 
 ## Implementation Details
 
+/**
+ * 实现细节
+ * 
+ * 关键技术点：
+ * 1. 一致性哈希：确保负载均衡的同时保持请求亲和性
+ * 2. 异步更新：降低延迟影响
+ * 3. 广播机制：保证集群一致性
+ */
+
 ### Consistent Hashing:
+
+/**
+ * 一致性哈希实现
+ * 
+ * 数据结构：
+ * 1. 哈希环：0-2^32范围的环形结构
+ * 2. 虚拟节点：每个物理节点对应多个虚拟节点
+ * 
+ * 映射规则：
+ * - 客户端ID通过哈希映射到环上某点
+ * - 顺时针找到最近的节点作为源节点
+ * 
+ * 优势：
+ * - 节点变化时最小化数据迁移
+ * - 负载均衡度好
+ * - 容错性强
+ */
 
 Maps each client identifier to a point on a hash ring, with nodes also assigned points. The node closest to the client identifier is the origin node, ensuring even load distribution and minimizing consultation needs.
 
 ### Async Updates and Broadcast Mechanism:
 
+/**
+ * 异步更新与广播机制
+ * 
+ * 异步更新：
+ * 1. 本地计数器实时更新
+ * 2. 批量异步同步到源节点
+ * 3. 使用滑动窗口处理时间边界
+ * 
+ * 广播机制：
+ * 1. 超限检测：比较本地计数与限制阈值
+ * 2. 触发广播：超限时通知所有节点
+ * 3. 状态更新：接收节点立即更新限制状态
+ */
+
 Nodes handle requests locally and asynchronously update the origin node, reducing client latency. A broadcast is triggered when the origin node count exceeds a limit, quickly informing all nodes to maintain rate limit integrity.
 
 ## Future Considerations
 
+/**
+ * 未来规划
+ * 
+ * 主要发展方向：
+ * 1. 全球化协调：实现跨区域的一致性限流
+ * 2. 服务发现升级：迁移到更现代的服务发现机制
+ * 3. 智能限流：基于机器学习的自适应限流
+ */
+
 ### Global Coordination:
+
+/**
+ * 全球化协调计划
+ * 
+ * 实现目标：
+ * 1. 跨区域gossip协议优化
+ * 2. 全球级别的限流一致性
+ * 3. 就近接入与全局管控相结合
+ */
 
 We aim to extend cluster coordination beyond regional boundaries using a global gossip protocol for consistent rate limiting across regions.
 
 ### Service Discovery Transition:
+
+/**
+ * 服务发现升级计划
+ * 
+ * 技术选型：
+ * - 目标：AWS Cloud Map
+ * - 原因：更好的AWS生态集成
+ * - 优势：更强的扩展性和可靠性
+ */
 
 We plan to move from Redis to AWS Cloud Map for service discovery, providing a more integrated and scalable solution within AWS infrastructure.
 

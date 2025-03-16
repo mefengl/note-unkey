@@ -3,6 +3,22 @@ title: Usage limited keys
 description: 'Limiting the usage of keys'
 ---
 
+/**
+ * 使用次数限制功能详解
+ * 
+ * 核心概念：
+ * - 为API密钥设置有限的使用次数
+ * - 超出限制后自动失效
+ * - 支持动态更新使用限制
+ * - 可配置每次使用的成本
+ * 
+ * 应用场景：
+ * 1. 付费API服务配额管理
+ * 2. 临时访问权限控制
+ * 3. 资源使用限额
+ * 4. 免费试用额度控制
+ */
+
 Sometimes you would like to create an api key and automatically invalidate it after a certain number of uses.
 
 Example:
@@ -10,11 +26,21 @@ You are selling API access and a customer has purchased 1000 api requests from y
 
 Unkey allows you to set/update usage limits on individual keys and we take care of invalidating a key after it has reached its limit.
 
-
-
-
-
 ### Example
+
+/**
+ * 创建限次密钥示例
+ * 
+ * 关键参数：
+ * - apiId: API标识
+ * - remaining: 剩余可用次数
+ * 
+ * 使用说明：
+ * 1. 通过POST请求创建新密钥
+ * 2. 设置初始可用次数为100
+ * 3. 每次验证都会减少使用次数
+ * 4. 次数用完后密钥自动失效
+ */
 
 Let's create a new key, which can be used 100 times.
 
@@ -29,8 +55,21 @@ curl --request POST \
 }'
 ```
 
-Now when you verify the new key, you will receive back the remaining verifications and after all of them are used up, the key is invalid.
+/**
+ * 密钥验证流程
+ * 
+ * 工作原理：
+ * 1. 发送验证请求
+ * 2. 检查密钥有效性
+ * 3. 返回剩余次数
+ * 4. 自动扣减使用次数
+ * 
+ * 响应说明：
+ * - valid: 密钥是否有效
+ * - remaining: 当前验证后的剩余次数
+ */
 
+Now when you verify the new key, you will receive back the remaining verifications and after all of them are used up, the key is invalid.
 
 ```bash
 curl --request POST \
@@ -49,26 +88,72 @@ curl --request POST \
 }
 ```
 
+/**
+ * 剩余次数说明
+ * 
+ * remaining字段解释：
+ * - 表示当前请求完成后的剩余可用次数
+ * - 为0时表示无法继续使用
+ * - 每次成功验证都会递减
+ * 
+ * 示例：
+ * remaining = 3 表示还可以成功验证3次
+ */
 
 <Note>
 The returned `remaining` value represents how many verifications are remaining after the current one.
 A value of 3, means you can verify the key successfully 3 more times.
 </Note>
 
-
-
 ## Custom cost
+
+/**
+ * 自定义使用成本
+ * 
+ * 功能说明：
+ * - 默认每次使用扣减1次配额
+ * - 可以自定义每次使用扣减的配额数量
+ * - 支持设置为0表示不扣减配额
+ * 
+ * 使用场景：
+ * 1. 不同API接口消耗不同配额
+ * 2. 特殊操作需要更多配额
+ * 3. 临时检查而不消耗配额
+ * 
+ * 实现细节：
+ * 1. 在验证请求中设置cost参数
+ * 2. 检查剩余配额是否足够
+ * 3. 批量扣减指定数量的配额
+ * 4. 配额不足时拒绝请求
+ */
 
 By default we deduct `1` from the remaining verifications, but in some cases you need to deduct more.
 
 You can override this in the request body. In this example unkey would deduct `4` for every valid verification.
 If a key would only have 3 remaining, the request would be rejected, as there is not enough remaining left.
 
+/**
+ * 特殊情况：零成本验证
+ * 
+ * 当cost设置为0时：
+ * - 不会扣减任何使用次数
+ * - 可以用于检查密钥状态
+ * - 适合健康检查场景
+ * - 不影响实际的使用限制
+ */
 
 <Note>
   There is a special case when you set `cost = 0`. In this case, the request will always be valid, but will not deduct anything.
-
 </Note>
+
+/**
+ * 使用示例
+ * 
+ * 在本例中：
+ * - 每次验证扣减4次配额
+ * - 如果剩余配额小于4，请求会被拒绝
+ * - 验证成功时返回更新后的剩余次数
+ */
 
 ```bash {7-9}
 curl --request POST \

@@ -3,12 +3,43 @@ title: Modes
 description: Latency or consistency? Choose the right mode for your usecase.
 ---
 
+/**
+ * 速率限制模式详解
+ * 
+ * 本文档介绍Unkey提供的两种速率限制模式：
+ * 1. 边缘本地限流：低延迟，适合大多数场景
+ * 2. 全局一致限流：高一致性，适合特殊场景
+ * 
+ * 基本概念：固定窗口限流
+ * - 在给定时间窗口内限制请求数量
+ * - 超过限制后阻止新请求
+ * - 时间窗口结束后自动重置计数
+ */
 
 Unkey offers `fixed window` rate limiting out of the box for all API keys. This means that you can set a limit on how many requests a key can make in a given time window. If the limit is exceeded, the key will be blocked from making further requests until the window resets.
 
 We provide 2 ways of rate limiting, optimized for different usecases.
 
 ## Local, fast rate limiting at the edge
+
+/**
+ * 边缘本地限流模式
+ * 
+ * 工作原理：
+ * 1. 每个边缘节点独立维护限流计数器
+ * 2. 本地处理限流判断，无需远程查询
+ * 3. 异步同步全局状态
+ * 
+ * 关键特点：
+ * - 近乎零延迟：本地判断，无网络开销
+ * - 高可用性：边缘节点故障不影响其他节点
+ * - 弱一致性：理论上可能短时超限
+ * 
+ * 最佳实践：
+ * - 适合大多数普通API限流场景
+ * - 建议为正常业务流量使用此模式
+ * - 对延迟敏感的场景首选此模式
+ */
 
 API key validation is very sensitive to latency because it is in the critical path of your application. Therefore minimizing the latency impact of rate limiting is a key priority.
 
@@ -17,6 +48,20 @@ Rate limiting at the edge comes with no latency increase and effectively rate li
 This way of limiting is effective to protect your application because there is a guaranteed upper bound after all edge locations the user is accessing have reached their limit.
 
 ### Example
+
+/**
+ * 边缘限流配置示例
+ * 
+ * 关键参数说明：
+ * - async: true    // 启用异步边缘限流
+ * - limit: 10      // 允许10个请求/时间窗口
+ * - duration: 1000 // 时间窗口为1秒
+ * 
+ * 使用场景示例：
+ * 1. 普通API接口保护
+ * 2. 用户操作频率控制
+ * 3. 非核心业务限流
+ */
 
 ```bash
 curl --request POST \
@@ -38,6 +83,30 @@ curl --request POST \
 
 ## Global consensus rate limiting
 
+/**
+ * 全局一致限流模式
+ * 
+ * 工作原理：
+ * 1. 所有请求都与中心节点同步
+ * 2. 严格保证全局限流准确性
+ * 3. 实时同步各节点状态
+ * 
+ * 关键特点：
+ * - 强一致性：保证严格的限流准确度
+ * - 全局可见：所有节点实时同步状态
+ * - 延迟较高：需要与中心节点通信
+ * 
+ * 使用建议：
+ * - 仅在必要时使用此模式
+ * - 适合对准确性要求极高的场景
+ * - 考虑延迟增加的影响
+ * 
+ * 典型应用场景：
+ * 1. 支付等金融相关操作
+ * 2. 严格的资源配额管理
+ * 3. 多区域部署的关键业务
+ */
+
 If having a strict rate limit that must not be exceeded, even when verifying keys in multiple regions, is required, then this is a good option.
 
 This way of limiting is guaranteed to be consistent globally, but it comes with a higher latency impact.
@@ -45,6 +114,20 @@ This way of limiting is guaranteed to be consistent globally, but it comes with 
 Typically most of your traffic should pass, and we recommend using the local rate limiting to provide a better user experience and only use global rate limiting when you really need to.
 
 ### Example
+
+/**
+ * 全局限流配置示例
+ * 
+ * 关键参数说明：
+ * - async: false   // 启用同步全局限流
+ * - limit: 10      // 允许10个请求/时间窗口
+ * - duration: 1000 // 时间窗口为1秒
+ * 
+ * 实现注意事项：
+ * 1. 预留足够的延迟容忍时间
+ * 2. 合理设置超时和重试策略
+ * 3. 监控全局限流的性能指标
+ */
 
 ```bash
 curl --request POST \
