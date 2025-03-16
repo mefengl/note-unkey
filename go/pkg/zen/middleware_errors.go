@@ -2,24 +2,26 @@ package zen
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/unkeyed/unkey/go/api"
 	"github.com/unkeyed/unkey/go/pkg/fault"
 	"github.com/unkeyed/unkey/go/pkg/otel/logging"
 )
 
-// WithErrorHandling returns middleware that translates errors into appropriate
-// HTTP responses. It uses status codes based on error tags:
+// WithErrorHandling 返回一个错误处理中间件
+// 根据错误标签将错误转换为适当的HTTP响应:
 //
-//   - NOT_FOUND: 404 Not Found
-//   - BAD_REQUEST: 400 Bad Request
-//   - UNAUTHORIZED: 401 Unauthorized
-//   - FORBIDDEN: 403 Forbidden
-//   - PROTECTED_RESOURCE: 412 Precondition Failed
-//   - Other errors: 500 Internal Server Error
+//   - NOT_FOUND: 404 资源未找到
+//   - BAD_REQUEST: 400 请求格式错误
+//   - UNAUTHORIZED: 401 未经身份验证
+//   - FORBIDDEN: 403 权限不足
+//   - PROTECTED_RESOURCE: 412 前置条件不满足
+//   - 其他错误: 500 服务器内部错误
 //
-// Example:
+// 示例:
 //
 //	server.RegisterRoute(
 //	    []zen.Middleware{zen.WithErrorHandling()},
@@ -34,38 +36,38 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 				return nil
 			}
 
-			//	errorSteps := fault.Flatten(err)
-			//	if len(errorSteps) > 0 {
+			 // 记录错误步骤
+			errorSteps := fault.Flatten(err)
+			if len(errorSteps) > 0 {
+				var b strings.Builder
+				b.WriteString("错误追踪:\n")
 
-			//		var b strings.Builder
-			//		b.WriteString("Error trace:\n")
+				for i, step := range errorSteps {
+					// 跳过空消息
+					if step.Message == "" {
+						continue
+					}
 
-			//		for i, step := range errorSteps {
-			//			// Skip empty messages
-			//			if step.Message == "" {
-			//				continue
-			//			}
+					b.WriteString(fmt.Sprintf("  步骤 %d:\n", i+1))
 
-			//			b.WriteString(fmt.Sprintf("  Step %d:\n", i+1))
+					if step.Location != "" {
+						b.WriteString(fmt.Sprintf("    位置: %s\n", step.Location))
+					} else {
+						b.WriteString("    位置: 未知\n")
+					}
 
-			//			if step.Location != "" {
-			//				b.WriteString(fmt.Sprintf("    Location: %s\n", step.Location))
-			//			} else {
-			//				b.WriteString("    Location: unknown\n")
-			//			}
+					b.WriteString(fmt.Sprintf("    消息: %s\n", step.Message))
 
-			//			b.WriteString(fmt.Sprintf("    Message: %s\n", step.Message))
+					// 在步骤之间添加分隔符
+					if i < len(errorSteps)-1 {
+						b.WriteString("\n")
+					}
+				}
 
-			//			// Add a small separator between steps
-			//			if i < len(errorSteps)-1 {
-			//				b.WriteString("\n")
-			//			}
-			//		}
+				logger.Error("API遇到错误", "trace", b.String())
+			}
 
-			//		logger.Error("api encountered errors", "trace", b.String())
-
-			//	}
-
+			// 根据错误标签返回适当的HTTP响应
 			switch fault.GetTag(err) {
 			case fault.NOT_FOUND:
 				return s.JSON(http.StatusNotFound, api.NotFoundError{
@@ -97,6 +99,7 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 					Status:    http.StatusUnauthorized,
 					Instance:  nil,
 				})
+
 			case fault.FORBIDDEN:
 				return s.JSON(http.StatusForbidden, api.ForbiddenError{
 					Title:     "Forbidden",
@@ -126,17 +129,18 @@ func WithErrorHandling(logger logging.Logger) Middleware {
 				})
 
 			case fault.DATABASE_ERROR:
-				break // fall through to default 500
+				break // 返回默认500错误
 
 			case fault.UNTAGGED:
-				break // fall through to default 500
+				break // 返回默认500错误
 
 			case fault.ASSERTION_FAILED:
-				break // fall through to default 500
+				break // 返回默认500错误
 			case fault.INTERNAL_SERVER_ERROR:
 				break
 			}
 
+			// 处理所有未分类的错误
 			return s.JSON(http.StatusInternalServerError, api.InternalServerError{
 				Title:     "Internal Server Error",
 				Type:      "https://unkey.com/docs/errors/internal_server_error",

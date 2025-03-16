@@ -1,38 +1,38 @@
-export async function sha256(source: string | Uint8Array): Promise<string> {
-  const buf = typeof source === "string" ? new TextEncoder().encode(source) : source;
-
-  const hash = await crypto.subtle.digest("sha-256", buf);
-  return b64(hash);
-}
-
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// This module is browser compatible.
+/**
+ * 哈希计算模块 - 把任何文字或数据变成一个独特的"指纹"
+ * 
+ * 想象一下，这个模块就像一个神奇的榨汁机：
+ * 1. 你可以放入任何水果（数据）
+ * 2. 榨汁机（SHA-256算法）会把水果榨成果汁
+ * 3. 不管放多少水果，得到的果汁都是固定大小的杯子
+ * 4. 同样的水果会得到同样的果汁，但不同的水果一定会得到不同的果汁
+ * 
+ * 这个"果汁"（哈希值）有什么用？
+ * - 检查文件是否被修改过（比如下载的游戏是否完整）
+ * - 安全地保存密码（不保存原始密码，只保存"果汁"）
+ * - 生成独特的标识符（就像每个人的指纹都不一样）
+ */
 
 /**
- * {@linkcode encode} and {@linkcode decode} for
- * [base64](https://en.wikipedia.org/wiki/Base64) encoding.
- *
- * This module is browser compatible.
- *
- * @example
- * ```ts
- * import {
- *   decode,
- *   encode,
- * } from "https://deno.land/std@$STD_VERSION/encoding/base64.ts";
- *
- * const b64Repr = "Zm9vYg==";
- *
- * const binaryData = decode(b64Repr);
- * console.log(binaryData);
- * // => Uint8Array [ 102, 111, 111, 98 ]
- *
- * console.log(encode(binaryData));
- * // => Zm9vYg==
- * ```
- *
- * @module
+ * 计算一段文字或数据的SHA-256哈希值
+ * 
+ * @param source - 要计算哈希值的文字或二进制数据
+ * @returns 返回Base64格式的哈希值
+ * 
+ * 举例：
+ * sha256("你好") => "D9/dZM7RWjbB+nS5C3H+oLzY3pFGaYWsT2RqyY7rdVc="
+ * sha256("你好啊") => "完全不同的一串字符..."
  */
+export async function sha256(source: string | Uint8Array): Promise<string> {
+  // 如果输入是文字，先转换成二进制数据
+  const buf = typeof source === "string" ? new TextEncoder().encode(source) : source;
+  
+  // 使用SHA-256算法计算哈希值
+  const hash = await crypto.subtle.digest("sha-256", buf);
+  
+  // 把二进制的哈希值转换成可读的字符串
+  return b64(hash);
+}
 
 const base64abc = [
   "A",

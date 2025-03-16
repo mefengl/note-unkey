@@ -3,7 +3,96 @@ title: Key Revocation
 description: 'Keys can be revoked at any time, from the API or the dashboard.'
 ---
 
+/**
+ * API密钥吊销机制详解
+ * 
+ * 核心功能：
+ * - 支持随时吊销任何API密钥
+ * - 提供API和仪表盘两种吊销方式
+ * - 吊销生效时间不超过60秒
+ * - 被吊销的密钥将永久失效
+ * 
+ * 应用场景：
+ * 1. 密钥泄露应急响应
+ * 2. 用户权限变更
+ * 3. 项目安全审计
+ * 4. 批量密钥管理
+ */
+
+/**
+ * 吊销生效时间说明
+ * 
+ * 工作原理：
+ * 1. 发起吊销请求后立即标记密钥状态
+ * 2. 通过缓存机制逐步使吊销生效
+ * 3. 最长60秒完成全网同步
+ * 4. 生效后所有验证请求都将失败
+ */
 In the event that a key is compromised, you can revoke it at any time. Once the key is revoked, it can take up to 60 seconds for the key to be invalidated. Once invalidated, the key will no longer be able to be used to authenticate requests.
+
+/**
+ * 吊销方式说明
+ * 
+ * API方式：
+ * 1. 通过DELETE请求删除密钥
+ * 2. 需要提供keyId参数
+ * 3. 支持批量操作
+ * 4. 适合自动化场景
+ * 
+ * 仪表盘方式：
+ * 1. 在Web界面直接操作
+ * 2. 可以查看吊销历史
+ * 3. 支持恢复功能
+ * 4. 适合手动管理
+ */
+
+## API吊销示例
+
+```bash
+curl -X DELETE \
+  --url https://api.unkey.dev/v1/keys/{keyId} \
+  --header 'Authorization: Bearer <UNKEY_ROOT_KEY>'
+```
+
+/**
+ * 最佳实践建议
+ * 
+ * 安全建议：
+ * 1. 建立密钥泄露应急预案
+ * 2. 定期审计密钥使用情况
+ * 3. 及时吊销可疑密钥
+ * 4. 记录所有吊销操作
+ * 
+ * 运维建议：
+ * 1. 监控吊销操作日志
+ * 2. 确认吊销生效状态
+ * 3. 通知相关用户
+ * 4. 准备备用密钥
+ */
+
+<Note>
+建议在以下情况立即吊销密钥：
+- 发现密钥泄露或被滥用
+- 项目安全要求变更
+- 用户权限需要调整
+- 定期轮换密钥时
+</Note>
+
+/**
+ * 验证吊销状态
+ * 
+ * 验证方法：
+ * 1. 通过verifyKey接口检查
+ * 2. 观察响应中的valid字段
+ * 3. 确认error信息
+ * 
+ * 示例响应：
+ * {
+ *   "valid": false,
+ *   "code": "REVOKED",
+ *   "message": "This key has been revoked"
+ * }
+ */
 
 
 

@@ -1,3 +1,14 @@
+/**
+ * 密钥迁移错误系统
+ * 
+ * 想象你在搬家时整理钥匙：
+ * - 有些钥匙配不上锁了（密钥不匹配）
+ * - 钥匙生锈了需要修复（密钥数据损坏）
+ * - 新家的锁不适合旧钥匙（密钥格式不兼容）
+ * 
+ * 这个模块处理在迁移API密钥时可能出现的各种问题
+ */
+
 import { BaseError, Err, Ok, type Result } from "@unkey/error";
 
 import { newId } from "@unkey/id";
@@ -6,11 +17,43 @@ import { createConnection, schema } from "../db";
 import type { Env } from "../env";
 import type { MessageBody } from "./message";
 
+/**
+ * 密钥迁移错误类
+ * 处理迁移过程中发生的问题
+ */
 export class MigrationError extends BaseError {
-  readonly name = "MigrationError";
-  readonly retry = false;
+  /**
+   * 错误类型名称
+   */
+  public readonly name = "MigrationError";
+
+  /**
+   * 是否可以重试
+   * 迁移错误通常无法通过重试解决，需要手动处理
+   */
+  public readonly retry = false;
 }
 
+/**
+ * 执行密钥迁移操作
+ * 将API密钥从旧系统迁移到新系统
+ * 
+ * @param message 包含迁移信息的消息体
+ * @param env 运行环境配置
+ * @returns 成功返回新密钥ID，失败返回迁移错误
+ * 
+ * @example
+ * const result = await migrateKey({
+ *   keyId: "old_key_123",
+ *   workspaceId: "ws_1"
+ * }, env);
+ * 
+ * if (result.ok) {
+ *   console.log("迁移成功，新密钥ID:", result.value.keyId);
+ * } else {
+ *   console.error("迁移失败:", result.error.message);
+ * }
+ */
 export async function migrateKey(
   message: MessageBody,
   env: Env,

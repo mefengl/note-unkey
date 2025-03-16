@@ -3,6 +3,31 @@ title: Automated Overrides
 description: Manage dynamic overrides programmatically
 ---
 
+/**
+ * 速率限制动态覆盖规则详解
+ * 
+ * 核心功能：
+ * - 动态调整速率限制配置
+ * - 支持按域名或用户设置规则
+ * - 可编程方式管理覆盖规则
+ * - 适用于企业级客户定制
+ * 
+ * 应用场景：
+ * 1. 客户升级到企业版时提升配额
+ * 2. 特定域名用户获得更高限制
+ * 3. 临时提升某用户的限制
+ * 4. 批量管理用户配额
+ */
+
+/**
+ * 基础概念说明
+ * 
+ * namespaceName: 限制规则的命名空间
+ * identifier: 规则适用的标识符(如邮箱域名)
+ * limit: 在指定时间内的请求上限
+ * duration: 计数窗口时长(毫秒)
+ * async: 是否异步处理
+ */
 Unkey's ratelimit override API allows you to manage dynamic overrides in response to events in your system.
 For example when your customer upgrades to an enterprise plan, you might want to create overrides for them to give them higher quotas.
 
@@ -11,6 +36,20 @@ Let's look at common scenarios and how to implement them using our [@unkey/api S
 Our application has a ratelimit namespace called `email.send`, which ratelimits users from sending OTP emails during login.
 As identifier we're using their email address.
 
+/**
+ * 设置覆盖规则
+ * 
+ * 使用场景：
+ * - 企业客户获得更高配额
+ * - 按域名批量设置限制
+ * - VIP用户特权配置
+ * 
+ * 实现细节：
+ * 1. 创建Unkey客户端实例
+ * 2. 调用setOverride方法
+ * 3. 指定命名空间和标识符
+ * 4. 设置新的限制参数
+ */
 ## Set Override
 
 In this example, we'll set an override for all users of our fictional customer `calendso.com`.
@@ -18,7 +57,6 @@ In this example, we'll set an override for all users of our fictional customer `
 How you detect a change is up to you, typically it's either through a user or admin action, or some form of incoming webhook from your billing or auth provider.
 
 ```ts
-
 import { Unkey } from "@unkey/api";
 
 const unkey = new Unkey({
@@ -39,6 +77,15 @@ await unkey.ratelimits.setOverride({
 
 Now, when we're ratelimiting `tim@calendso.com`, it will use the override settings and ratelimit them to 10 per minute.
 
+/**
+ * 查询覆盖规则
+ * 
+ * 功能说明：
+ * - 获取单个标识符的覆盖规则
+ * - 返回完整的规则配置
+ * - 包含规则ID和详细参数
+ * - 用于验证规则是否生效
+ */
 ## Get Override
 
 Retrieve a single override for an identifier within a namespace.
@@ -70,6 +117,20 @@ console.log(override)
 
 [API Reference ->](/api-reference/ratelimits/get-override)
 
+/**
+ * 列出所有覆盖规则
+ * 
+ * 实现功能：
+ * - 获取命名空间下所有规则
+ * - 支持分页获取结果
+ * - 返回规则总数统计
+ * - 适合构建管理界面
+ * 
+ * 返回数据：
+ * - overrides: 规则列表
+ * - cursor: 分页标记
+ * - total: 规则总数
+ */
 ## List Overrides
 
 You can list all of the configured overirdes for a namespace to build your own dashboards.
@@ -106,6 +167,21 @@ console.log(res)
 
 [API Reference ->](/api-reference/ratelimits/list-overrides)
 
+/**
+ * 删除覆盖规则
+ * 
+ * 使用场景：
+ * - 客户降级套餐时
+ * - 特权到期后
+ * - 清理无效规则
+ * - 重置用户限制
+ * 
+ * 注意事项：
+ * 1. 删除后立即生效
+ * 2. 用户将恢复默认限制
+ * 3. 操作不可撤销
+ * 4. 建议保留操作日志
+ */
 ## Delete Override
 
 Once they downgrade their plan, we can revoke any overrides:
@@ -124,3 +200,19 @@ await unkey.ratelimits.deleteOverride({
 ```
 
 [API Reference ->](/api-reference/ratelimits/delete-override)
+
+/**
+ * 最佳实践建议
+ * 
+ * 管理建议：
+ * 1. 制定清晰的覆盖规则策略
+ * 2. 记录所有规则变更操作
+ * 3. 定期审核现有规则
+ * 4. 设置合理的默认值
+ * 
+ * 监控建议：
+ * 1. 跟踪规则使用情况
+ * 2. 监控异常使用模式
+ * 3. 设置告警阈值
+ * 4. 保持规则最新
+ */

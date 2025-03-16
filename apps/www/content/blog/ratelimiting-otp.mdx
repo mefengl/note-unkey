@@ -7,26 +7,84 @@ image: "/images/blog-images/otp-ratelimit/otp-ratelimit.png"
 tags: ["tutorials"]
 ---
 
+/**
+ * OTP速率限制实现指南
+ * 
+ * 核心概念：
+ * - OTP(一次性密码)作为额外的安全层
+ * - 通过速率限制防止暴力破解
+ * - 支持邮件和短信两种验证方式
+ * - 分离发送和验证的速率限制
+ * 
+ * 安全考虑：
+ * 1. 防止短时间内的多次尝试
+ * 2. 限制单个IP的请求频率
+ * 3. 避免验证码被猜测出来
+ * 4. 确保验证码在过期前不被破解
+ */
+
 ## Understanding OTP
 A One-Time Password (OTP) is a unique code valid for only one login session or transaction. It adds an extra layer of security by preventing fraudulent access to your accounts, even if someone else knows your password.
+
+/**
+ * OTP应用场景说明
+ * 
+ * 常见使用场景：
+ * - 新设备登录验证
+ * - 银行账户安全验证
+ * - 无密码登录流程
+ * - 敏感操作确认
+ * 
+ * 安全风险：
+ * - 无限制尝试导致被破解
+ * - 暴力破解攻击威胁
+ * - 验证码过期时间设置
+ * - 请求频率控制
+ */
 You've likely encountered OTPs many times. For instance, when logging into your bank account from a new device, you may receive an OTP via SMS or email, which you must enter to verify your identity. Another typical example is the login flow, where instead of entering a password, an OTP is sent to your email. 
 
 Without ratelimiting, an attacker could try several OTPs in quick succession in a so-called 'brute force attack' to find the right one to gain access to an account.
 
 By limiting the number of OTP attempts within a specific timeframe, it becomes practically impossible for an attacker to guess the right OTP before it expires.
 
+/**
+ * 实现准备工作
+ * 
+ * 环境要求：
+ * 1. Unkey账户设置
+ * 2. Root Key配置
+ * 3. 必要的API权限
+ * 4. 开发环境准备
+ * 
+ * 权限说明：
+ * - create_namespace: 创建命名空间
+ * - limit: 执行速率限制
+ */
 ## Implementing ratelimiting
-
 ### Prerequisites
-
 - [Unkey account](https://app.unkey.com)
 - Unkey root key with permissions `create_namespace`, `limit`
 
+/**
+ * 基础实现示例
+ * 
+ * 流程说明：
+ * 1. 生成随机验证码
+ * 2. 通过邮件发送
+ * 3. 处理发送结果
+ * 4. 返回适当响应
+ * 
+ * 注意事项：
+ * - 验证码长度为6位
+ * - 需要验证邮箱有效性
+ * - 处理发送失败情况
+ * - 记录错误日志
+ */
 If you prefer, you can use our example here and skip the entire tutorial below. Also, if you want to see it live, you can see an implementation below using Unkey and Resend [here](https://otp-example.vercel.app/)
 
 Before we begin with the tutorial, it should be stated that OTP implementations will have two separate requests: sending the OTP via email or SMS and verifying the request.
 
-Let’s start with the sending of an OTP. Below is an insecure OTP implementation with a fake email that sends a random 6-digit code to the user via a next.js server action.
+Let's start with the sending of an OTP. Below is an insecure OTP implementation with a fake email that sends a random 6-digit code to the user via a next.js server action.
 
 ```typescript
 "use server";
@@ -43,7 +101,6 @@ export async function sendOTP(formData: FormData) {
       };
     }
     const otp = randomInt(100000, 999999).toString();
-
     const { data, error } = await emails.send({
       from: "james@unkey.com",
       to: email,
@@ -66,15 +123,44 @@ export async function sendOTP(formData: FormData) {
 }
 ```
 
+/**
+ * 发送OTP的速率限制实现
+ * 
+ * 步骤说明：
+ * 1. 安装必要依赖
+ * 2. 配置速率限制器
+ * 3. 获取请求IP
+ * 4. 应用限制规则
+ * 
+ * 关键配置：
+ * - namespace: otp-send
+ * - limit: 每分钟2次
+ * - duration: 60秒
+ */
 ### Adding ratelimiting to sending an OTP
 
-First, you’ll need to install the `@unkey/ratelimit` package to your project and then add the following imports.
+First, you'll need to install the `@unkey/ratelimit` package to your project and then add the following imports.
 
 ```typescript
 import { Ratelimit } from "@unkey/ratelimit";
 import { headers } from "next/headers";
 ```
 
+/**
+ * 速率限制器配置
+ * 
+ * 参数说明：
+ * - rootKey: API密钥
+ * - namespace: 命名空间
+ * - limit: 请求限制次数
+ * - duration: 时间窗口
+ * 
+ * 实现细节：
+ * 1. 自动创建命名空间
+ * 2. 限制每分钟2次请求
+ * 3. 使用IP作为标识
+ * 4. 支持IP回退机制
+ */
 We will use the headers to retrieve the IP of the requester and use that as an identifier to limit against. Now we need to configure the ratelimiter
 
 ```typescript
@@ -89,7 +175,21 @@ export async function sendOTP(formData: FormData) {
   // sending OTP logic
 ```
 
-The above code will configure a new namespace named `otp-send` if it doesn’t exist and limit the requests to two per minute. Of course, any number of attempts, but two emails per minute should suffice for the end user.
+/**
+ * IP地址处理逻辑
+ * 
+ * 获取方式：
+ * 1. x-forwarded-for 头
+ * 2. x-real-ip 头
+ * 3. 默认fallback值
+ * 
+ * 处理步骤：
+ * 1. 检查转发IP
+ * 2. 提取真实IP
+ * 3. 清理IP格式
+ * 4. 设置默认值
+ */
+The above code will configure a new namespace named `otp-send` if it doesn't exist and limit the requests to two per minute. Of course, any number of attempts, but two emails per minute should suffice for the end user.
 
 Now that we have our ratelimiter configured, we can modify the request to first retrieve the IP address; this will check for both the forwarded IP address and the real IP from the headers. We will use the forwarded IP first and fall back to the real IP.
 
@@ -107,6 +207,19 @@ export async function sendOTP(formData: FormData) {
     // sending logic below
 ```
 
+/**
+ * 速率限制执行逻辑
+ * 
+ * 返回数据：
+ * - success: 是否允许请求
+ * - reset: 限制重置时间
+ * 
+ * 处理流程：
+ * 1. 执行限制检查
+ * 2. 计算重置时间
+ * 3. 返回友好提示
+ * 4. 继续业务逻辑
+ */
 Now we have access to an identifier, and we can run our rate limit against it. Add the following code before checking if the user has provided an email.
 
 ```typescript
@@ -115,7 +228,7 @@ const { success, reset } = await unkey.limit(
     );
     const millis = reset - Date.now();
     const timeToReset = Math.floor(millis / 1000);
-		// if this is unsuccesful return a time to reset to the user so they know how long to wait
+    // if this is unsuccesful return a time to reset to the user so they know how long to wait
     if (!success) {
       return {
         success: false,
@@ -123,15 +236,24 @@ const { success, reset } = await unkey.limit(
         statusCode: 429,
       };
     }
-
     const email = formData.get("email") as string | null;
     //shortened for tutorial.
 ```
 
-You’ll notice that we check for `forwardedIP` and then the `realIP`, and finally, if nothing is available, we will use `no-ip` for the fallback. This endpoint is now protected; a user can send two requests per minute. Below is a demo of how you could present this to the user:
-
-<Image unoptimize="true" src="/images/blog-images/otp-ratelimit/15fps_1080.gif" alt="Example of sending ratelimits" width="1920" height="1080"/>
-
+/**
+ * 验证OTP的速率限制
+ * 
+ * 安全考虑：
+ * - 更严格的限制规则
+ * - 较短的重置时间
+ * - 单独的命名空间
+ * - 清晰的错误提示
+ * 
+ * 配置说明：
+ * - namespace: otp-verify
+ * - limit: 30秒内2次
+ * - duration: 30秒
+ */
 ### Ratelimiting the OTP verification
 
 The endpoint that verifies an OTP has more potential for brute force attacks; sending codes down with no restriction will give a bad actor plenty of time to try numerous codes to get the right one.
@@ -151,9 +273,7 @@ export async function verifyOTP(prevState: any, formData: FormData) {
     if (realIP) {
       realIP = realIP.trim();
     }
-
     const code = formData.get("code") as string | null;
-
     if (!code) {
       return {
         success: false,
@@ -161,13 +281,11 @@ export async function verifyOTP(prevState: any, formData: FormData) {
         statusCode: 400,
       };
     }
-
     const { success, reset } = await unkey.limit(
       forwardedIP || realIP || "no-ip",
     );
     const millis = reset - Date.now();
     const timeToReset = Math.floor(millis / 1000);
-
     if (!success) {
       return {
         success: false,
@@ -178,6 +296,21 @@ export async function verifyOTP(prevState: any, formData: FormData) {
     // Handle verification of your OTP
 ```
 
+/**
+ * 验证端点配置示例
+ * 
+ * 配置参数：
+ * - rootKey: 从环境变量读取
+ * - namespace: 验证专用空间
+ * - limit: 更严格的限制
+ * - duration: 更短的时间窗口
+ * 
+ * 使用说明：
+ * 1. 创建专用实例
+ * 2. 设置合适的限制
+ * 3. 独立的分析数据
+ * 4. 更严格的控制
+ */
 You can set the limits and namespace to be different, allowing you to be more restrictive and keep all your analytical data separated, for example.
 
 ```typescript
@@ -189,10 +322,27 @@ const unkey = new Ratelimit({
 });
 ```
 
-This operation will allow a user to try twice every 30 seconds before it ratelimits the operation for the IP. Below is an example of how this could look in your application from the example code.
-
-<Image unoptimize="true" src="/images/blog-images/otp-ratelimit/otp-verify-1080.gif" alt="Example of verifying ratelimits" width="1920" height="1080"/>
-
+/**
+ * 最佳实践指南
+ * 
+ * 限制设置：
+ * 1. 合理的尝试次数
+ * 2. 适当的重置时间
+ * 3. 分离的命名空间
+ * 4. 清晰的错误提示
+ * 
+ * 用户体验：
+ * 1. 友好的提示信息
+ * 2. 剩余等待时间
+ * 3. 重试指导说明
+ * 4. 替代方案建议
+ * 
+ * 监控调整：
+ * 1. 定期检查限制效果
+ * 2. 分析用户行为模式
+ * 3. 优化限制参数
+ * 4. 改进用户体验
+ */
 ## Best Practices in Rate Limiting OTP
 
 Implementing rate limiting is one thing, but ratelimiting effectively requires following best practices. Here are some tips:
@@ -203,4 +353,4 @@ Implementing rate limiting is one thing, but ratelimiting effectively requires f
 
 These practices enhance the security and efficiency of OTPs while maintaining a positive user experience.
 
-You can read more about Unkey’s Ratelimiting our [documentation](https://www.unkey.com/docs/ratelimiting/introduction), you can see the [demo](https://otp-example.vercel.app/) of this in action and test what happens when you go over limits.
+You can read more about Unkey's Ratelimiting our [documentation](https://www.unkey.com/docs/ratelimiting/introduction), you can see the [demo](https://otp-example.vercel.app/) of this in action and test what happens when you go over limits.

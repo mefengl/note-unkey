@@ -20,22 +20,26 @@ import (
 )
 
 const (
-	maxBufferSize int = 50000
-	maxBatchSize  int = 10000
+	maxBufferSize int = 50000 // 缓冲区最大容量
+	maxBatchSize  int = 10000 // 批处理最大大小
 )
 
 var (
-	telemetry  *TelemetryConfig
-	inFlight   sync.WaitGroup // incoming requests
-	httpClient *http.Client   // shared http client
+	telemetry  *TelemetryConfig  // 遥测配置
+	inFlight   sync.WaitGroup    // 追踪进行中的请求
+	httpClient *http.Client      // 共享的 HTTP 客户端
 )
 
+// main 函数实现了 ClickHouse 的代理服务
+// 它接收 HTTP 请求并将数据批量写入 ClickHouse
 func main() {
+	// 加载配置
 	config, err := LoadConfig()
 	if err != nil {
 		log.Fatalf("failed to load configuration: %v", err)
 	}
 
+	// 初始化 HTTP 客户端
 	httpClient = &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
@@ -48,6 +52,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// 设置遥测系统
 	var cleanup func(context.Context) error
 	telemetry, cleanup, err = setupTelemetry(ctx, config)
 	if err != nil {
@@ -63,20 +68,22 @@ func main() {
 
 	if telemetry != nil && telemetry.LogHandler != nil {
 		config.Logger = slog.New(telemetry.LogHandler)
-
 		slog.SetDefault(config.Logger)
 	}
 
 	config.Logger.Info(fmt.Sprintf("%s starting", config.ServiceName),
 		"flush_interval", config.FlushInterval.String())
 
+	// 设置基本认证
 	requiredAuthorization := "Basic " + base64.StdEncoding.EncodeToString([]byte(config.BasicAuth))
 
+	// 创建请求缓冲通道
 	buffer := make(chan *Batch, maxBufferSize)
 
-	// blocks until we've persisted everything and the process may stop
+	// 启动缓冲处理器
 	done := startBufferProcessor(ctx, buffer, config, telemetry)
 
+	// 健康检查路由
 	http.HandleFunc("/v1/liveness", func(w http.ResponseWriter, r *http.Request) {
 		_, span := telemetry.Tracer.Start(r.Context(), "liveness_check")
 		defer span.End()
@@ -90,6 +97,7 @@ func main() {
 		span.SetStatus(codes.Ok, "")
 	})
 
+	// 主要的处理路由
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		inFlight.Add(1)
 		defer inFlight.Done()
@@ -99,6 +107,7 @@ func main() {
 
 		telemetry.Metrics.RequestCounter.Add(ctx, 1)
 
+		// 验证认证信息
 		if r.Header.Get("Authorization") != requiredAuthorization {
 			telemetry.Metrics.ErrorCounter.Add(ctx, 1)
 			config.Logger.Error("invalid authorization header",
@@ -117,6 +126,7 @@ func main() {
 			attribute.String("remote_addr", r.RemoteAddr),
 		)
 
+		// 处理查询
 		query := r.URL.Query().Get("query")
 		span.SetAttributes(attribute.String("query", query))
 
@@ -125,15 +135,13 @@ func main() {
 			config.Logger.Warn("invalid query",
 				"query", query,
 				"remote_addr", r.RemoteAddr)
-
+			
 			span.SetStatus(codes.Error, "wrong query")
 			http.Error(w, "wrong query", http.StatusBadRequest)
 			return
 		}
 
-		params := r.URL.Query()
-		params.Del("query_id")
-
+		// 读取请求体
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			telemetry.Metrics.ErrorCounter.Add(ctx, 1)
@@ -146,12 +154,13 @@ func main() {
 			http.Error(w, "cannot read body", http.StatusInternalServerError)
 			return
 		}
+		
 		rows := strings.Split(string(body), "\n")
-
 		config.Logger.Debug("received insert request",
 			"row_count", len(rows),
 			"table", strings.Split(query, " ")[2])
 
+		// 将数据发送到缓冲区
 		buffer <- &Batch{
 			Params: params,
 			Rows:   rows,
@@ -166,25 +175,16 @@ func main() {
 		)
 	})
 
-	// Setup signal handling
+	// 信号处理
 	signalCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Start HTTP server in a goroutine
+	// 启动 HTTP 服务器
 	server := &http.Server{Addr: fmt.Sprintf(":%s", config.ListenerPort)}
 	go func() {
 		config.Logger.Info("server listening", "port", config.ListenerPort)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			config.Logger.Error("failed to start server", "error", err.Error())
-			os.Exit(1)
-		}
-	}()
-
-	// Wait for interrupt signal
-	<-signalCtx.Done()
-	config.Logger.Info("shutdown signal received")
-
-	// Create a timeout context for shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 

@@ -1,6 +1,15 @@
+/**
+ * OpenAPI错误响应定义
+ * 定义了API可能返回的所有标准HTTP错误响应格式
+ */
+
 import { z } from "zod";
 import { errorSchemaFactory } from "./http";
 
+/**
+ * OpenAPI错误响应映射
+ * 为每个HTTP状态码定义标准的错误响应结构
+ */
 export const openApiErrorResponses = {
   400: {
     description:

@@ -12,31 +12,32 @@ import (
 	"github.com/unkeyed/unkey/apps/agent/services/vault"
 )
 
+// Server 定义了 Agent API 服务器
 type Server struct {
 	sync.Mutex
-	logger      logging.Logger
-	metrics     metrics.Metrics
-	isListening bool
-	mux         *http.ServeMux
-	srv         *http.Server
+	logger      logging.Logger      // 日志记录器
+	metrics     metrics.Metrics     // 指标收集器
+	isListening bool               // 服务器是否正在监听
+	mux         *http.ServeMux     // HTTP 路由复用器
+	srv         *http.Server       // HTTP 服务器
 
-	// The bearer token required for inter service communication
-	authToken string
-	vault     *vault.Service
-	ratelimit ratelimit.Service
-
-	clickhouse EventBuffer
-	validator  validation.OpenAPIValidator
+	authToken  string              // 用于服务间通信的认证令牌
+	vault      *vault.Service      // 密钥管理服务
+	ratelimit  ratelimit.Service   // 速率限制服务
+	
+	clickhouse EventBuffer         // ClickHouse 事件缓冲区
+	validator  validation.OpenAPIValidator // OpenAPI 验证器
 }
 
+// Config 定义了服务器的配置选项
 type Config struct {
-	NodeId     string
-	Logger     logging.Logger
-	Metrics    metrics.Metrics
-	Ratelimit  ratelimit.Service
-	Clickhouse EventBuffer
-	Vault      *vault.Service
-	AuthToken  string
+	NodeId     string             // 节点标识符
+	Logger     logging.Logger     // 日志记录器
+	Metrics    metrics.Metrics    // 指标收集器
+	Ratelimit  ratelimit.Service  // 速率限制服务
+	Clickhouse EventBuffer        // ClickHouse 事件缓冲区
+	Vault      *vault.Service     // 密钥管理服务
+	AuthToken  string            // 服务间认证令牌
 }
 
 func New(config Config) (*Server, error) {
